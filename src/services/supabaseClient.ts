@@ -7,7 +7,7 @@ import 'react-native-url-polyfill/auto';
 
 import type { ClothingCategory, ClothingColor, ColorFamily, Season } from '../types/clothing';
 
-type LookbookieDatabase = {
+type LookBoogieDatabase = {
   public: {
     Tables: {
       clothes: {
@@ -133,8 +133,8 @@ export const supabaseStorageBucket =
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 
-export const supabase: SupabaseClient<LookbookieDatabase> | null = isSupabaseConfigured
-  ? createClient<LookbookieDatabase>(supabaseUrl as string, supabasePublishableKey as string, {
+export const supabase: SupabaseClient<LookBoogieDatabase> | null = isSupabaseConfigured
+  ? createClient<LookBoogieDatabase>(supabaseUrl as string, supabasePublishableKey as string, {
       auth: {
         storage: AsyncStorage,
         autoRefreshToken: true,

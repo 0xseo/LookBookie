@@ -1,14 +1,14 @@
-# Design System & UI Specification: Lookbookie (룩북이)
+# Design System & UI Specification: LookBoogie (룩부기)
 
-이 문서는 '룩북이(Lookbookie)' 앱의 시각적 정체성, 대표 캐릭터 콘셉트, 그리고 UI 컴포넌트 구조를 정의합니다.
+이 문서는 '룩부기(LookBoogie)' 앱의 시각적 정체성, 대표 캐릭터 콘셉트, 그리고 UI 컴포넌트 구조를 정의합니다.
 Codex는 모든 UI 작성 및 React Native StyleSheet 구현 시 본 문서의 디자인 토큰과 규칙을 엄격히 준수해야 합니다.
 
 ---
 
 ## 1. Brand Identity & Character Concept
 
-- **App Name:** 룩북이 (Lookbookie)
-- **Mascot Character:** 느긋하게 나만의 룩북을 차곡차곡 쌓아가는 거북이 캐릭터 '룩북이'
+- **App Name:** 룩부기 (LookBoogie)
+- **Mascot Character:** 느긋하게 나만의 룩북을 차곡차곡 쌓아가는 거북이 캐릭터 '룩부기'
 - **Design Philosophy:**
   - **Friendly & Cozy:** 거북이 캐릭터의 느긋함과 따뜻함이 느껴지는 소프트 그린/어스 톤을 가미합니다.
   - **Minimal & Focus:** 캐릭터 요소는 주요 안내/빈 상태(Empty State)에 포인트로 사용하며, 옷 목록과 캔버스는 옷 본연의 색상이 돋보이도록 깔끔한 미니멀리즘을 유지합니다.
@@ -39,7 +39,7 @@ export const COLORS = {
   danger: '#E63946',       // 삭제 / 경고
 
   // Toast & Character Message Box
-  bubbleBg: '#F1F5F9',     // 룩북이 대화상자 배경
+  bubbleBg: '#F1F5F9',     // 룩부기 대화상자 배경
 };
 
 
@@ -68,10 +68,10 @@ export const COLORS = {
     - Character Speech Bubble: 16px (우상단 4px로 대화창 느낌 연출)
 
 ## 4. Key Screen Layouts & Component Design
-- A. 공통 컴포넌트: 룩북이 캐릭터 가이드 (Empty & Loading State)
+- A. 공통 컴포넌트: 룩부기 캐릭터 가이드 (Empty & Loading State)
   - Empty State (옷장/코디가 비어있을 때):
 
-    - 화면 중앙에 룩북이 일러스트/아이콘 배치.
+    - 화면 중앙에 룩부기 일러스트/아이콘 배치.
 
     - 말풍선(Bubble Container) 내 메시지: "아직 옷장이 비어있어북! 첫 옷을 등록해봐북 🐢"
 
@@ -80,7 +80,7 @@ export const COLORS = {
     - 누끼(배경 제거) 처리 중 등 작업 진행 시 거북이가 천천히 고개를 끄덕이는 형태의 로딩 인디케이터/문구 제공.
 
 - B. 메인 옷장 화면 (Wardrobe Screen)
-  - Header: Top Bar 좌측에 '룩북이' 앱 로고 및 마스코트 아이콘 배치.
+  - Header: Top Bar 좌측에 '룩부기' 앱 로고 및 마스코트 아이콘 배치.
 
   - Category Filter: [전체 | 상의 | 하의 | 아우터 | 신발 | 악세사리] 둥근 칩 형태의 수평 스크롤.
 
@@ -123,5 +123,5 @@ export const COLORS = {
 
 - 2. 반응성 및 터치 영역 확보: 스티커 조작 버튼 및 브러시 컨트롤은 손가락 터치가 용이하도록 최소 44x44px 이상의 터치 영역(hitSlop 포함)을 확보할 것.
 
-- 3. 네트워크 예외 처리: 오프라인 상태일 경우 네트워크 에러 팝업 대신 로컬 저장소 이미지를 우선 노출하며, 룩북이 캐릭터 안내 문구("지금은 오프라인 모드야북!")로 자연스럽게 상기시킬 것.
+- 3. 네트워크 예외 처리: 오프라인 상태일 경우 네트워크 에러 팝업 대신 로컬 저장소 이미지를 우선 노출하며, 룩부기 캐릭터 안내 문구("지금은 오프라인 모드야북!")로 자연스럽게 상기시킬 것.
 ```

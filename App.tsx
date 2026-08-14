@@ -1,15 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Modal, StatusBar, StyleSheet, View } from 'react-native';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Modal, StatusBar, StyleSheet, View } from "react-native";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-import { BottomTabs, type AppTab } from './src/components/BottomTabs';
-import { COLORS } from './constants/colors';
-import { AddItemScreen, type AddItemScreenHandle } from './src/screens/AddItemScreen';
-import { ClothingDetailScreen } from './src/screens/ClothingDetailScreen';
-import { CodiBookScreen } from './src/screens/CodiBookScreen';
-import { FriendsScreen } from './src/screens/FriendsScreen';
-import { MyPageScreen } from './src/screens/MyPageScreen';
-import { WardrobeScreen } from './src/screens/WardrobeScreen';
+import { BottomTabs, type AppTab } from "./src/components/BottomTabs";
+import { COLORS } from "./constants/colors";
+import {
+  AddItemScreen,
+  type AddItemScreenHandle,
+} from "./src/screens/AddItemScreen";
+import { ClothingDetailScreen } from "./src/screens/ClothingDetailScreen";
+import { CodiBookScreen } from "./src/screens/CodiBookScreen";
+import { FriendsScreen } from "./src/screens/FriendsScreen";
+import { MyPageScreen } from "./src/screens/MyPageScreen";
+import { WardrobeScreen } from "./src/screens/WardrobeScreen";
 import {
   countCloudPendingClothingItems,
   countOutfits,
@@ -17,18 +23,22 @@ import {
   listCloudPendingClothingItems,
   listClothingItems,
   updateClothingCloudState,
-} from './src/storage/database';
-import { isSupabaseConfigured } from './src/services/supabaseClient';
-import type { CloudSession } from './src/services/supabaseClient';
+} from "./src/storage/database";
+import { isSupabaseConfigured } from "./src/services/supabaseClient";
+import type { CloudSession } from "./src/services/supabaseClient";
 import {
+  getExistingClothingRemoteRecordIds,
   getCurrentCloudSession,
   signInWithEmail,
   signOutCloud,
   signUpWithEmail,
   subscribeToCloudAuthChanges,
-  syncClothingItemToCloud,
-} from './src/services/wardrobeCloud';
-import { exportLocalBackupFile, importLocalBackupFile } from './src/services/backupService';
+  syncClothingItemUpdateToCloud,
+} from "./src/services/wardrobeCloud";
+import {
+  exportLocalBackupFile,
+  importLocalBackupFile,
+} from "./src/services/backupService";
 import {
   acceptFriendRequest,
   declineFriendRequest,
@@ -39,14 +49,14 @@ import {
   listFriendWardrobe,
   listOutgoingFriendRequests,
   sendFriendRequestByEmail,
-} from './src/services/friendsCloud';
-import type { CategoryFilter, ClothingItem } from './src/types/clothing';
+} from "./src/services/friendsCloud";
+import type { CategoryFilter, ClothingItem } from "./src/types/clothing";
 import type {
   FriendOutfit,
   FriendProfile,
   FriendRequest,
   FriendWardrobeItem,
-} from './src/types/friends';
+} from "./src/types/friends";
 
 export default function App() {
   return (
@@ -59,11 +69,14 @@ export default function App() {
 function AppContent() {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<ClothingItem[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('전체');
-  const [activeTab, setActiveTab] = useState<AppTab>('wardrobe');
+  const [selectedCategory, setSelectedCategory] =
+    useState<CategoryFilter>("전체");
+  const [activeTab, setActiveTab] = useState<AppTab>("wardrobe");
   const [isAddVisible, setIsAddVisible] = useState(false);
-  const [selectedWardrobeItem, setSelectedWardrobeItem] = useState<ClothingItem | null>(null);
+  const [selectedWardrobeItem, setSelectedWardrobeItem] =
+    useState<ClothingItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDatabaseReady, setIsDatabaseReady] = useState(false);
   const [outfitsCount, setOutfitsCount] = useState(0);
   const [cloudSession, setCloudSession] = useState<CloudSession | null>(null);
   const [pendingCloudCount, setPendingCloudCount] = useState(0);
@@ -71,17 +84,25 @@ function AppContent() {
   const [isBackupBusy, setIsBackupBusy] = useState(false);
   const [isFriendBusy, setIsFriendBusy] = useState(false);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
-  const [incomingFriendRequests, setIncomingFriendRequests] = useState<FriendRequest[]>([]);
-  const [outgoingFriendRequests, setOutgoingFriendRequests] = useState<FriendRequest[]>([]);
-  const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
-  const [friendWardrobeItems, setFriendWardrobeItems] = useState<FriendWardrobeItem[]>([]);
+  const [incomingFriendRequests, setIncomingFriendRequests] = useState<
+    FriendRequest[]
+  >([]);
+  const [outgoingFriendRequests, setOutgoingFriendRequests] = useState<
+    FriendRequest[]
+  >([]);
+  const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(
+    null
+  );
+  const [friendWardrobeItems, setFriendWardrobeItems] = useState<
+    FriendWardrobeItem[]
+  >([]);
   const [friendOutfits, setFriendOutfits] = useState<FriendOutfit[]>([]);
   const addItemScreenRef = useRef<AddItemScreenHandle>(null);
-  const tabBottomOffset = Math.max(8, insets.bottom);
-  const tabBarInset = 80 + tabBottomOffset;
+  const tabBottomOffset = Math.max(8, insets.bottom) + 10;
+  const tabBarInset = 15 + tabBottomOffset;
 
   const visibleItems =
-    selectedCategory === '전체'
+    selectedCategory === "전체"
       ? items
       : items.filter((item) => item.category === selectedCategory);
 
@@ -89,12 +110,12 @@ function AppContent() {
     setIsLoading(true);
 
     try {
-      const storedItems = await listClothingItems('전체');
+      const storedItems = await listClothingItems("전체");
       setItems(storedItems);
     } catch (error) {
       Alert.alert(
-        '옷장을 불러오지 못했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "옷장을 불러오지 못했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsLoading(false);
@@ -107,8 +128,8 @@ function AppContent() {
       setOutfitsCount(storedOutfitCount);
     } catch (error) {
       Alert.alert(
-        '코디 수를 불러오지 못했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "코디 수를 불러오지 못했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     }
   }, []);
@@ -119,8 +140,8 @@ function AppContent() {
       setPendingCloudCount(storedPendingCount);
     } catch (error) {
       Alert.alert(
-        '동기화 상태를 불러오지 못했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "동기화 상태를 불러오지 못했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     }
   }, []);
@@ -134,34 +155,97 @@ function AppContent() {
     }
 
     try {
-      const [acceptedFriends, incomingRequests, outgoingRequests] = await Promise.all([
-        listFriends(),
-        listIncomingFriendRequests(),
-        listOutgoingFriendRequests(),
-      ]);
+      const [acceptedFriends, incomingRequests, outgoingRequests] =
+        await Promise.all([
+          listFriends(),
+          listIncomingFriendRequests(),
+          listOutgoingFriendRequests(),
+        ]);
 
       setFriends(acceptedFriends);
       setIncomingFriendRequests(incomingRequests);
       setOutgoingFriendRequests(outgoingRequests);
     } catch (error) {
       Alert.alert(
-        '친구 목록을 불러오지 못했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "친구 목록을 불러오지 못했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     }
   }, [cloudSession]);
+
+  const reconcileCloudStatuses = useCallback(async () => {
+    if (!cloudSession || !isDatabaseReady) {
+      return false;
+    }
+
+    const storedItems = await listClothingItems("전체");
+    const cloudReferenceItems = storedItems.filter(
+      (item) =>
+        item.cloudSyncStatus === "synced" ||
+        (item.cloudSyncStatus === "pending" &&
+          Boolean(item.remoteRecordId) &&
+          item.syncedAt === null &&
+          item.cloudError === null)
+    );
+    const remoteRecordIds = cloudReferenceItems.flatMap((item) =>
+      item.remoteRecordId ? [item.remoteRecordId] : []
+    );
+    const existingRemoteRecordIds = new Set(
+      await getExistingClothingRemoteRecordIds(remoteRecordIds)
+    );
+    const missingItems = cloudReferenceItems.filter(
+      (item) =>
+        !item.remoteRecordId || !existingRemoteRecordIds.has(item.remoteRecordId)
+    );
+    const verifiedRestoredItems = cloudReferenceItems.filter(
+      (item) =>
+        item.cloudSyncStatus === "pending" &&
+        item.remoteRecordId !== null &&
+        existingRemoteRecordIds.has(item.remoteRecordId)
+    );
+
+    await Promise.all(
+      [
+        ...missingItems.map((item) =>
+          updateClothingCloudState(item.id, {
+            remoteImageUrl: item.remoteImageUrl,
+            remoteRecordId: null,
+            storagePath: null,
+            cloudSyncStatus: "pending",
+            cloudError: "클라우드에서 해당 옷을 찾지 못했어요.",
+            syncedAt: null,
+          })
+        ),
+        ...verifiedRestoredItems.map((item) =>
+          updateClothingCloudState(item.id, {
+            remoteImageUrl: item.remoteImageUrl,
+            remoteRecordId: item.remoteRecordId,
+            storagePath: item.storagePath,
+            cloudSyncStatus: "synced",
+            cloudError: null,
+            syncedAt: new Date().toISOString(),
+          })
+        ),
+      ]
+    );
+
+    return missingItems.length > 0 || verifiedRestoredItems.length > 0;
+  }, [cloudSession, isDatabaseReady]);
 
   useEffect(() => {
     async function bootstrap() {
       try {
         await initDatabase();
+        setIsDatabaseReady(true);
         await loadItems();
         await loadOutfitCount();
         await loadCloudPendingCount();
       } catch (error) {
         Alert.alert(
-          '초기화에 실패했어북',
-          error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+          "초기화에 실패했어북",
+          error instanceof Error
+            ? error.message
+            : "알 수 없는 오류가 발생했어요."
         );
         setIsLoading(false);
       }
@@ -171,13 +255,42 @@ function AppContent() {
   }, [loadCloudPendingCount, loadItems, loadOutfitCount]);
 
   useEffect(() => {
+    if (!cloudSession || !isDatabaseReady) {
+      return;
+    }
+
+    async function reconcileStoredCloudStatuses() {
+      try {
+        const didChange = await reconcileCloudStatuses();
+
+        if (didChange) {
+          await loadItems();
+          await loadCloudPendingCount();
+        }
+      } catch {
+        // Keep the last local status while offline or when cloud verification is unavailable.
+      }
+    }
+
+    reconcileStoredCloudStatuses();
+  }, [
+    cloudSession,
+    isDatabaseReady,
+    loadCloudPendingCount,
+    loadItems,
+    reconcileCloudStatuses,
+  ]);
+
+  useEffect(() => {
     async function loadSession() {
       try {
         setCloudSession(await getCurrentCloudSession());
       } catch (error) {
         Alert.alert(
-          '클라우드 세션을 확인하지 못했어북',
-          error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+          "클라우드 세션을 확인하지 못했어북",
+          error instanceof Error
+            ? error.message
+            : "알 수 없는 오류가 발생했어요."
         );
       }
     }
@@ -206,8 +319,10 @@ function AppContent() {
         await loadFriendList();
       } catch (error) {
         Alert.alert(
-          '클라우드 프로필을 준비하지 못했어북',
-          error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+          "클라우드 프로필을 준비하지 못했어북",
+          error instanceof Error
+            ? error.message
+            : "알 수 없는 오류가 발생했어요."
         );
       }
     }
@@ -241,6 +356,17 @@ function AppContent() {
     await loadOutfitCount();
   };
 
+  const handleWardrobeRefresh = async () => {
+    try {
+      await reconcileCloudStatuses();
+    } catch {
+      // A manual refresh still reloads the offline wardrobe when cloud access fails.
+    }
+
+    await loadItems();
+    await loadCloudPendingCount();
+  };
+
   const handleCloudSignIn = async (email: string, password: string) => {
     setIsCloudBusy(true);
 
@@ -250,8 +376,8 @@ function AppContent() {
       await loadCloudPendingCount();
     } catch (error) {
       Alert.alert(
-        '로그인에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "로그인에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsCloudBusy(false);
@@ -264,11 +390,14 @@ function AppContent() {
     try {
       await signUpWithEmail(email, password);
       setCloudSession(await getCurrentCloudSession());
-      Alert.alert('가입 요청을 보냈어북', '이메일 확인이 필요하면 받은 편지함을 확인해 주세요.');
+      Alert.alert(
+        "가입 요청을 보냈어북",
+        "이메일 확인이 필요하면 받은 편지함을 확인해 주세요."
+      );
     } catch (error) {
       Alert.alert(
-        '가입에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "가입에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsCloudBusy(false);
@@ -283,8 +412,8 @@ function AppContent() {
       setCloudSession(null);
     } catch (error) {
       Alert.alert(
-        '로그아웃에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "로그아웃에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsCloudBusy(false);
@@ -297,13 +426,13 @@ function AppContent() {
     try {
       const result = await exportLocalBackupFile();
       Alert.alert(
-        '백업을 만들었어북',
-        result.shared ? '공유 시트로 백업 파일을 내보냈어요.' : result.uri,
+        "백업을 만들었어북",
+        result.shared ? "공유 시트로 백업 파일을 내보냈어요." : result.uri
       );
     } catch (error) {
       Alert.alert(
-        '백업 내보내기에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "백업 내보내기에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsBackupBusy(false);
@@ -320,17 +449,23 @@ function AppContent() {
         return;
       }
 
+      try {
+        await reconcileCloudStatuses();
+      } catch {
+        // The local backup remains usable while offline; cloud state stays pending.
+      }
+
       await loadItems();
       await loadOutfitCount();
       await loadCloudPendingCount();
       Alert.alert(
-        '백업을 가져왔어북',
-        `옷 ${result.clothesCount}개와 코디 ${result.outfitsCount}개를 추가했어요.`,
+        "백업을 가져왔어북",
+        `옷 ${result.clothesCount}개와 코디 ${result.outfitsCount}개를 추가했어요.`
       );
     } catch (error) {
       Alert.alert(
-        '백업 가져오기에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "백업 가져오기에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsBackupBusy(false);
@@ -343,11 +478,14 @@ function AppContent() {
     try {
       await sendFriendRequestByEmail(email);
       await loadFriendList();
-      Alert.alert('친구 요청을 보냈어북', '상대가 수락하면 친구 옷장을 볼 수 있어요.');
+      Alert.alert(
+        "친구 요청을 보냈어북",
+        "상대가 수락하면 친구 옷장을 볼 수 있어요."
+      );
     } catch (error) {
       Alert.alert(
-        '친구 요청에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "친구 요청에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsFriendBusy(false);
@@ -363,8 +501,8 @@ function AppContent() {
       await handleSelectFriend(request);
     } catch (error) {
       Alert.alert(
-        '친구 요청 수락에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "친구 요청 수락에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsFriendBusy(false);
@@ -379,8 +517,8 @@ function AppContent() {
       await loadFriendList();
     } catch (error) {
       Alert.alert(
-        '친구 요청 처리에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "친구 요청 처리에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsFriendBusy(false);
@@ -401,8 +539,8 @@ function AppContent() {
       setFriendOutfits(outfits);
     } catch (error) {
       Alert.alert(
-        '친구 데이터를 불러오지 못했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "친구 데이터를 불러오지 못했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsFriendBusy(false);
@@ -411,12 +549,18 @@ function AppContent() {
 
   const handleSyncPending = async () => {
     if (!isSupabaseConfigured) {
-      Alert.alert('클라우드 설정이 필요해북', '.env에 Supabase URL과 publishable key를 넣어 주세요.');
+      Alert.alert(
+        "클라우드 설정이 필요해북",
+        ".env에 Supabase URL과 publishable key를 넣어 주세요."
+      );
       return;
     }
 
     if (!cloudSession) {
-      Alert.alert('로그인이 필요해북', '마이페이지에서 Supabase 계정으로 로그인해 주세요.');
+      Alert.alert(
+        "로그인이 필요해북",
+        "마이페이지에서 Supabase 계정으로 로그인해 주세요."
+      );
       return;
     }
 
@@ -427,18 +571,9 @@ function AppContent() {
       let syncedCount = 0;
 
       for (const item of pendingItems) {
-        const cloudState = await syncClothingItemToCloud({
-          localImagePath: item.localImagePath,
-          name: item.name,
-          brand: item.brand,
-          category: item.category,
-          seasons: item.seasons,
-          color: item.color,
-          colorValue: item.colorValue,
-          colorFamily: item.colorFamily,
-        });
+        const cloudState = await syncClothingItemUpdateToCloud(item, false);
 
-        if (cloudState.cloudSyncStatus === 'synced') {
+        if (cloudState.cloudSyncStatus === "synced") {
           syncedCount += 1;
         }
 
@@ -447,11 +582,14 @@ function AppContent() {
 
       await loadItems();
       await loadCloudPendingCount();
-      Alert.alert('동기화 완료북', `${syncedCount}개의 옷을 클라우드에 올렸어요.`);
+      Alert.alert(
+        "동기화 완료북",
+        `${syncedCount}개의 옷을 클라우드에 올렸어요.`
+      );
     } catch (error) {
       Alert.alert(
-        '동기화에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "동기화에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsCloudBusy(false);
@@ -461,7 +599,7 @@ function AppContent() {
   return (
     <View style={styles.app}>
       <StatusBar barStyle="dark-content" />
-      {activeTab === 'wardrobe' ? (
+      {activeTab === "wardrobe" ? (
         <WardrobeScreen
           items={visibleItems}
           selectedCategory={selectedCategory}
@@ -470,20 +608,21 @@ function AppContent() {
           onSelectCategory={handleSelectCategory}
           onItemPress={setSelectedWardrobeItem}
           onAddPress={() => setIsAddVisible(true)}
+          onRefresh={handleWardrobeRefresh}
         />
       ) : null}
 
-      {activeTab === 'codiBook' ? (
+      {activeTab === "codiBook" ? (
         <CodiBookScreen
           items={items}
           isLoading={isLoading}
           bottomInset={tabBarInset}
           onOutfitSaved={handleOutfitSaved}
-          onOpenWardrobe={() => setActiveTab('wardrobe')}
+          onOpenWardrobe={() => setActiveTab("wardrobe")}
         />
       ) : null}
 
-      {activeTab === 'profile' ? (
+      {activeTab === "profile" ? (
         <MyPageScreen
           clothesCount={items.length}
           outfitsCount={outfitsCount}
@@ -502,7 +641,7 @@ function AppContent() {
         />
       ) : null}
 
-      {activeTab === 'friends' ? (
+      {activeTab === "friends" ? (
         <FriendsScreen
           isCloudConfigured={isSupabaseConfigured}
           cloudEmail={cloudSession?.user.email ?? null}
@@ -518,7 +657,7 @@ function AppContent() {
           onAcceptFriendRequest={handleAcceptFriendRequest}
           onDeclineFriendRequest={handleDeclineFriendRequest}
           onSelectFriend={handleSelectFriend}
-          onOpenProfile={() => setActiveTab('profile')}
+          onOpenProfile={() => setActiveTab("profile")}
         />
       ) : null}
 

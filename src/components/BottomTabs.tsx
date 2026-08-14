@@ -1,3 +1,4 @@
+import { BookOpen, Shirt, UserRound, Users } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { COLORS } from '../../constants/colors';
@@ -10,11 +11,17 @@ type BottomTabsProps = {
   onSelectTab: (tab: AppTab) => void;
 };
 
-const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
-  { key: 'wardrobe', label: '옷장', icon: '▦' },
-  { key: 'codiBook', label: '코디북', icon: '✦' },
-  { key: 'friends', label: '친구', icon: '◇' },
-  { key: 'profile', label: '마이', icon: '○' },
+type TabConfig = {
+  key: AppTab;
+  label: string;
+  Icon: typeof Shirt;
+};
+
+const TABS: TabConfig[] = [
+  { key: 'wardrobe', label: '옷장', Icon: Shirt },
+  { key: 'codiBook', label: '코디북', Icon: BookOpen },
+  { key: 'friends', label: '친구', Icon: Users },
+  { key: 'profile', label: '마이', Icon: UserRound },
 ];
 
 export function BottomTabs({ activeTab, bottomOffset, onSelectTab }: BottomTabsProps) {
@@ -22,6 +29,8 @@ export function BottomTabs({ activeTab, bottomOffset, onSelectTab }: BottomTabsP
     <View style={[styles.container, { bottom: bottomOffset }]}>
       {TABS.map((tab) => {
         const isActive = activeTab === tab.key;
+        const iconColor = isActive ? COLORS.primary : COLORS.textSecondary;
+        const Icon = tab.Icon;
 
         return (
           <Pressable
@@ -30,7 +39,7 @@ export function BottomTabs({ activeTab, bottomOffset, onSelectTab }: BottomTabsP
             style={[styles.tab, isActive && styles.activeTab]}
             hitSlop={8}
           >
-            <Text style={[styles.icon, isActive && styles.activeText]}>{tab.icon}</Text>
+            <Icon color={iconColor} size={20} strokeWidth={2.2} />
             <Text style={[styles.label, isActive && styles.activeText]}>{tab.label}</Text>
           </Pressable>
         );
@@ -62,11 +71,6 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     backgroundColor: COLORS.secondary,
-  },
-  icon: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
   },
   label: {
     marginTop: 2,

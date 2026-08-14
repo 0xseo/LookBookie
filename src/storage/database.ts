@@ -312,9 +312,9 @@ export async function importLocalBackupPayload(
       color: item.color,
       colorValue: item.colorValue ?? fallbackColorOption.value,
       colorFamily: item.colorFamily ?? fallbackColorOption.family,
-      cloudSyncStatus: item.cloudSyncStatus,
-      cloudError: item.cloudError,
-      syncedAt: item.syncedAt,
+      cloudSyncStatus: item.remoteRecordId ? 'pending' : 'local',
+      cloudError: null,
+      syncedAt: null,
     });
     clothesCount += 1;
   }

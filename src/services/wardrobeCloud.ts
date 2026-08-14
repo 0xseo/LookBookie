@@ -172,6 +172,21 @@ export async function syncClothingItemUpdateToCloud(
   }
 
   try {
+    const { data: existingRecord, error: existingRecordError } = await supabase
+      .from('clothes')
+      .select('id')
+      .eq('id', item.remoteRecordId)
+      .eq('owner_id', session.user.id)
+      .maybeSingle();
+
+    if (existingRecordError) {
+      throw existingRecordError;
+    }
+
+    if (!existingRecord) {
+      return syncClothingItemToCloud(item);
+    }
+
     const uploadResult = imageChanged
       ? await uploadClothingImage(session.user.id, item.localImagePath)
       : {
@@ -210,6 +225,37 @@ export async function syncClothingItemUpdateToCloud(
   } catch (error) {
     return buildFailedResult(error instanceof Error ? error.message : 'Unknown cloud update error');
   }
+}
+
+export async function getExistingClothingRemoteRecordIds(remoteRecordIds: string[]) {
+  if (!isSupabaseConfigured || !supabase || remoteRecordIds.length === 0) {
+    return [];
+  }
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    throw sessionError;
+  }
+
+  if (!session?.user) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('clothes')
+    .select('id')
+    .eq('owner_id', session.user.id)
+    .in('id', remoteRecordIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return data.map((record) => record.id);
 }
 
 export async function deleteClothingItemFromCloud(item: ClothingItem) {

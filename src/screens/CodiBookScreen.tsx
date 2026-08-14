@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,22 +14,29 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+  type ViewStyle,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { COLORS } from '../../constants/colors';
-import { syncOutfitToCloud } from '../services/outfitCloud';
-import { deleteOutfit, insertOutfit, listOutfits, updateOutfit } from '../storage/database';
-import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
-import { clothingMatchesSearch } from '../services/colorSearch';
+import { COLORS } from "../../constants/colors";
+import { syncOutfitToCloud } from "../services/outfitCloud";
+import {
+  deleteOutfit,
+  insertOutfit,
+  listOutfits,
+  updateOutfit,
+} from "../storage/database";
+import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
+import { clothingMatchesSearch } from "../services/colorSearch";
 import {
   CATEGORY_FILTERS,
   SEASONS,
   type CategoryFilter,
   type ClothingItem,
+  type ColorOption,
   type Season,
-} from '../types/clothing';
-import type { Outfit, OutfitSticker } from '../types/outfit';
+} from "../types/clothing";
+import type { Outfit, OutfitSticker } from "../types/outfit";
 
 type CodiBookScreenProps = {
   items: ClothingItem[];
@@ -44,13 +51,27 @@ type CanvasSize = {
   height: number;
 };
 
-type CodiMode = 'list' | 'picker' | 'canvas';
+type ImageSize = {
+  width: number;
+  height: number;
+};
+
+type VisualFrame = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type CodiMode = "list" | "picker" | "canvas";
 
 const GRID_COLUMNS = 3;
 const GRID_GAP = 8;
 const SIDE_PADDING = 16;
 const MIN_STICKER_SIZE = 72;
 const DEFAULT_STICKER_SIZE = 140;
+const HANDLE_SIZE = 44;
+const MIN_HANDLE_SPAN = 60;
 const SELECTED_OUTLINE_OFFSETS = [
   { x: -2, y: 0 },
   { x: 2, y: 0 },
@@ -70,34 +91,60 @@ export function CodiBookScreen({
   onOpenWardrobe,
 }: CodiBookScreenProps) {
   const { width } = useWindowDimensions();
-  const [mode, setMode] = useState<CodiMode>('list');
+  const [mode, setMode] = useState<CodiMode>("list");
   const [stickers, setStickers] = useState<OutfitSticker[]>([]);
-  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(
+    null
+  );
   const [editingOutfitId, setEditingOutfitId] = useState<number | null>(null);
-  const [editingOutfitName, setEditingOutfitName] = useState('');
-  const [editingOutfitSeasons, setEditingOutfitSeasons] = useState<Season[]>([]);
-  const [canvasSize, setCanvasSize] = useState<CanvasSize>({ width: 0, height: 0 });
+  const [editingOutfitName, setEditingOutfitName] = useState("");
+  const [editingOutfitSeasons, setEditingOutfitSeasons] = useState<Season[]>(
+    []
+  );
+  const [canvasSize, setCanvasSize] = useState<CanvasSize>({
+    width: 0,
+    height: 0,
+  });
   const [outfits, setOutfits] = useState<Outfit[]>([]);
-  const [pickerCategory, setPickerCategory] = useState<CategoryFilter>('전체');
-  const [pickerQuery, setPickerQuery] = useState('');
+  const [outfitQuery, setOutfitQuery] = useState("");
+  const [pickerCategory, setPickerCategory] = useState<CategoryFilter>("전체");
+  const [pickerQuery, setPickerQuery] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const { colorOptions } = useColorPaletteOptions();
 
   const tileSize = useMemo(() => {
-    const availableWidth = width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1);
+    const availableWidth =
+      width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1);
 
     return Math.floor(availableWidth / GRID_COLUMNS);
   }, [width]);
   const selectedSticker = useMemo(
     () => stickers.find((sticker) => sticker.id === selectedStickerId),
-    [selectedStickerId, stickers],
+    [selectedStickerId, stickers]
   );
+  const wardrobeItemsById = useMemo(
+    () => new Map(items.map((item) => [item.id, item])),
+    [items]
+  );
+  const visibleOutfits = useMemo(() => {
+    const query = outfitQuery.trim().toLowerCase();
+
+    if (!query) {
+      return outfits;
+    }
+
+    return outfits.filter((outfit) =>
+      outfitMatchesSearch(outfit, query, wardrobeItemsById, colorOptions)
+    );
+  }, [colorOptions, outfitQuery, outfits, wardrobeItemsById]);
   const pickerItems = useMemo(() => {
     const query = pickerQuery.trim().toLowerCase();
 
     return items.filter((item) => {
-      const categoryMatches = pickerCategory === '전체' || item.category === pickerCategory;
-      const queryMatches = !query || clothingMatchesSearch(item, query, colorOptions);
+      const categoryMatches =
+        pickerCategory === "전체" || item.category === pickerCategory;
+      const queryMatches =
+        !query || clothingMatchesSearch(item, query, colorOptions);
 
       return categoryMatches && queryMatches;
     });
@@ -108,8 +155,8 @@ export function CodiBookScreen({
       setOutfits(await listOutfits());
     } catch (error) {
       Alert.alert(
-        '코디북을 불러오지 못했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "코디북을 불러오지 못했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     }
   }, []);
@@ -119,27 +166,30 @@ export function CodiBookScreen({
   }, [loadSavedOutfits]);
 
   useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (mode === 'list') {
-        return false;
-      }
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (mode === "list") {
+          return false;
+        }
 
-      setMode('list');
-      return true;
-    });
+        setMode("list");
+        return true;
+      }
+    );
 
     return () => subscription.remove();
   }, [mode]);
 
   const openNewPicker = () => {
     setEditingOutfitId(null);
-    setEditingOutfitName('');
+    setEditingOutfitName("");
     setEditingOutfitSeasons([]);
     setStickers([]);
     setSelectedStickerId(null);
-    setPickerCategory('전체');
-    setPickerQuery('');
-    setMode('picker');
+    setPickerCategory("전체");
+    setPickerQuery("");
+    setMode("picker");
   };
 
   const openOutfit = (outfit: Outfit) => {
@@ -153,12 +203,16 @@ export function CodiBookScreen({
     setEditingOutfitName(outfit.name);
     setEditingOutfitSeasons(outfit.seasons);
     setStickers(restoredStickers);
-    setSelectedStickerId(restoredStickers[restoredStickers.length - 1]?.id ?? null);
-    setMode('canvas');
+    setSelectedStickerId(
+      restoredStickers[restoredStickers.length - 1]?.id ?? null
+    );
+    setMode("canvas");
   };
 
   const toggleStickerFromItem = (item: ClothingItem) => {
-    const existingSticker = stickers.find((sticker) => sticker.clothingItemId === item.id);
+    const existingSticker = stickers.find(
+      (sticker) => sticker.clothingItemId === item.id
+    );
 
     if (existingSticker) {
       deleteSticker(existingSticker.id);
@@ -167,7 +221,7 @@ export function CodiBookScreen({
 
     const size = Math.min(
       DEFAULT_STICKER_SIZE,
-      Math.max(MIN_STICKER_SIZE, (canvasSize.width || width) * 0.36),
+      Math.max(MIN_STICKER_SIZE, (canvasSize.width || width) * 0.36)
     );
     const nextIndex = stickers.length + 1;
     const sticker: OutfitSticker = {
@@ -187,7 +241,9 @@ export function CodiBookScreen({
 
   const updateSticker = (id: string, updates: Partial<OutfitSticker>) => {
     setStickers((current) =>
-      current.map((sticker) => (sticker.id === id ? { ...sticker, ...updates } : sticker)),
+      current.map((sticker) =>
+        sticker.id === id ? { ...sticker, ...updates } : sticker
+      )
     );
   };
 
@@ -201,7 +257,10 @@ export function CodiBookScreen({
       return;
     }
 
-    const topZIndex = stickers.reduce((top, sticker) => Math.max(top, sticker.zIndex), 0);
+    const topZIndex = stickers.reduce(
+      (top, sticker) => Math.max(top, sticker.zIndex),
+      0
+    );
     updateSticker(selectedSticker.id, { zIndex: topZIndex + 1 });
   };
 
@@ -209,13 +268,13 @@ export function CodiBookScreen({
     setEditingOutfitSeasons((current) =>
       current.includes(season)
         ? current.filter((currentSeason) => currentSeason !== season)
-        : [...current, season],
+        : [...current, season]
     );
   };
 
   const saveOutfit = async () => {
     if (stickers.length === 0) {
-      Alert.alert('저장할 코디가 없어북', '옷을 먼저 선택해 주세요.');
+      Alert.alert("저장할 코디가 없어북", "옷을 먼저 선택해 주세요.");
       return;
     }
 
@@ -255,17 +314,17 @@ export function CodiBookScreen({
 
       await loadSavedOutfits();
       await onOutfitSaved();
-      setMode('list');
+      setMode("list");
       Alert.alert(
-        '저장했어북',
+        "저장했어북",
         cloudResult.synced
-          ? '코디북에 저장하고 친구가 볼 수 있게 클라우드에도 올렸어요.'
-          : '코디북에 로컬 저장했어요. 클라우드는 로그인 후 다시 저장하면 공유돼요.',
+          ? "코디북에 저장하고 친구가 볼 수 있게 클라우드에도 올렸어요."
+          : "코디북에 로컬 저장했어요. 클라우드는 로그인 후 다시 저장하면 공유돼요."
       );
     } catch (error) {
       Alert.alert(
-        '코디 저장에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        "코디 저장에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
       setIsSaving(false);
@@ -277,16 +336,16 @@ export function CodiBookScreen({
       return;
     }
 
-    Alert.alert('코디를 삭제할까북?', '저장된 코디북 목록에서 사라져요.', [
-      { text: '취소', style: 'cancel' },
+    Alert.alert("코디를 삭제할까북?", "저장된 코디북 목록에서 사라져요.", [
+      { text: "취소", style: "cancel" },
       {
-        text: '삭제',
-        style: 'destructive',
+        text: "삭제",
+        style: "destructive",
         onPress: async () => {
           await deleteOutfit(editingOutfitId);
           await loadSavedOutfits();
           await onOutfitSaved();
-          setMode('list');
+          setMode("list");
           setEditingOutfitId(null);
           setStickers([]);
           setSelectedStickerId(null);
@@ -295,30 +354,55 @@ export function CodiBookScreen({
     ]);
   };
 
+  const refreshCodiBook = async () => {
+    await loadSavedOutfits();
+    await onOutfitSaved();
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.container, { paddingBottom: bottomInset + 8 }]}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.title}>코디북</Text>
+            <Text style={styles.title}>룩부기 코디북</Text>
             <Text style={styles.caption}>저장한 코디를 보고 수정해요</Text>
           </View>
           <View style={styles.headerActions}>
-            {mode === 'picker' ? (
-              <Pressable onPress={() => setMode('list')} style={styles.secondaryButton} hitSlop={8}>
+            <Pressable
+              onPress={refreshCodiBook}
+              style={styles.mascotSlot}
+              accessibilityLabel="룩부기 코디북 새로고침"
+              accessibilityRole="button"
+              hitSlop={8}
+            >
+              <Text style={styles.mascot}>🐢</Text>
+            </Pressable>
+            {mode === "picker" ? (
+              <Pressable
+                onPress={() => setMode("list")}
+                style={styles.secondaryButton}
+                hitSlop={8}
+              >
                 <Text style={styles.secondaryButtonText}>닫기</Text>
               </Pressable>
             ) : null}
-            {mode === 'canvas' && editingOutfitId ? (
-              <Pressable onPress={confirmDeleteOutfit} style={styles.headerDangerButton} hitSlop={8}>
+            {mode === "canvas" && editingOutfitId ? (
+              <Pressable
+                onPress={confirmDeleteOutfit}
+                style={styles.headerDangerButton}
+                hitSlop={8}
+              >
                 <Text style={styles.headerDangerButtonText}>삭제</Text>
               </Pressable>
             ) : null}
-            {mode === 'canvas' ? (
+            {mode === "canvas" ? (
               <Pressable
                 onPress={saveOutfit}
                 disabled={isSaving}
-                style={[styles.headerSaveButton, isSaving && styles.disabledButton]}
+                style={[
+                  styles.headerSaveButton,
+                  isSaving && styles.disabledButton,
+                ]}
                 hitSlop={8}
               >
                 {isSaving ? (
@@ -331,16 +415,35 @@ export function CodiBookScreen({
           </View>
         </View>
 
-        {mode === 'list' ? (
-          <OutfitList
-            outfits={outfits}
-            tileSize={tileSize}
-            bottomInset={bottomInset}
-            onSelect={openOutfit}
-          />
+        {mode === "list" ? (
+          <View style={styles.screenBody}>
+            {outfits.length > 0 ? (
+              <View style={styles.listSearchWrap}>
+                <TextInput
+                  value={outfitQuery}
+                  onChangeText={setOutfitQuery}
+                  placeholder="코디 이름, 계절, 옷 정보 검색"
+                  placeholderTextColor={COLORS.textSecondary}
+                  style={styles.searchInput}
+                  returnKeyType="search"
+                />
+              </View>
+            ) : null}
+            <OutfitList
+              outfits={visibleOutfits}
+              tileSize={tileSize}
+              bottomInset={bottomInset}
+              emptyText={
+                outfitQuery.trim()
+                  ? "검색 결과가 없어북"
+                  : "아직 저장된 코디가 없어북"
+              }
+              onSelect={openOutfit}
+            />
+          </View>
         ) : null}
 
-        {mode === 'picker' ? (
+        {mode === "picker" ? (
           <View style={styles.screenBody}>
             <View style={styles.pickerControls}>
               <TextInput
@@ -363,10 +466,18 @@ export function CodiBookScreen({
                     <Pressable
                       key={category}
                       onPress={() => setPickerCategory(category)}
-                      style={[styles.categoryChip, selected && styles.categoryChipSelected]}
+                      style={[
+                        styles.categoryChip,
+                        selected && styles.categoryChipSelected,
+                      ]}
                       hitSlop={8}
                     >
-                      <Text style={[styles.categoryChipText, selected && styles.categoryChipTextSelected]}>
+                      <Text
+                        style={[
+                          styles.categoryChipText,
+                          selected && styles.categoryChipTextSelected,
+                        ]}
+                      >
                         {category}
                       </Text>
                     </Pressable>
@@ -385,7 +496,11 @@ export function CodiBookScreen({
                 <View style={styles.speechBubble}>
                   <Text style={styles.emptyText}>코디할 옷이 아직 없어북</Text>
                 </View>
-                <Pressable onPress={onOpenWardrobe} style={styles.primaryButton} hitSlop={8}>
+                <Pressable
+                  onPress={onOpenWardrobe}
+                  style={styles.primaryButton}
+                  hitSlop={8}
+                >
                   <Text style={styles.primaryButtonText}>옷장으로</Text>
                 </Pressable>
               </View>
@@ -397,7 +512,9 @@ export function CodiBookScreen({
                 columnWrapperStyle={styles.gridRow}
                 contentContainerStyle={styles.gridContent}
                 renderItem={({ item }) => {
-                  const selected = stickers.some((sticker) => sticker.clothingItemId === item.id);
+                  const selected = stickers.some(
+                    (sticker) => sticker.clothingItemId === item.id
+                  );
 
                   return (
                     <Pressable
@@ -412,13 +529,23 @@ export function CodiBookScreen({
                       hitSlop={8}
                     >
                       <View style={styles.libraryImageFrame}>
-                        <Image source={{ uri: item.localImagePath }} style={styles.libraryImage} />
+                        <Image
+                          source={{ uri: item.localImagePath }}
+                          style={styles.libraryImage}
+                        />
                       </View>
                       <Text style={styles.libraryText} numberOfLines={1}>
                         {item.brand || item.name || item.category}
                       </Text>
-                      <View style={[styles.pickBadge, selected && styles.pickBadgeSelected]}>
-                        <Text style={styles.pickBadgeText}>{selected ? '✓' : '+'}</Text>
+                      <View
+                        style={[
+                          styles.pickBadge,
+                          selected && styles.pickBadgeSelected,
+                        ]}
+                      >
+                        <Text style={styles.pickBadgeText}>
+                          {selected ? "✓" : "+"}
+                        </Text>
                       </View>
                     </Pressable>
                   );
@@ -429,12 +556,12 @@ export function CodiBookScreen({
             <SelectedBar
               stickers={stickers}
               onRemove={deleteSticker}
-              onArrange={() => setMode('canvas')}
+              onArrange={() => setMode("canvas")}
             />
           </View>
         ) : null}
 
-        {mode === 'canvas' ? (
+        {mode === "canvas" ? (
           <View style={styles.screenBody}>
             <View style={styles.canvasMetaPanel}>
               <TextInput
@@ -453,10 +580,18 @@ export function CodiBookScreen({
                     <Pressable
                       key={season}
                       onPress={() => toggleOutfitSeason(season)}
-                      style={[styles.seasonChip, selected && styles.seasonChipSelected]}
+                      style={[
+                        styles.seasonChip,
+                        selected && styles.seasonChipSelected,
+                      ]}
                       hitSlop={8}
                     >
-                      <Text style={[styles.seasonChipText, selected && styles.seasonChipTextSelected]}>
+                      <Text
+                        style={[
+                          styles.seasonChipText,
+                          selected && styles.seasonChipTextSelected,
+                        ]}
+                      >
                         {season}
                       </Text>
                     </Pressable>
@@ -467,7 +602,7 @@ export function CodiBookScreen({
 
             <View style={styles.canvasActions}>
               <Pressable
-                onPress={() => setMode('picker')}
+                onPress={() => setMode("picker")}
                 style={styles.canvasIconButton}
                 accessibilityLabel="옷 추가"
                 hitSlop={8}
@@ -477,7 +612,10 @@ export function CodiBookScreen({
               <Pressable
                 onPress={bringSelectedForward}
                 disabled={!selectedSticker}
-                style={[styles.secondaryButton, !selectedSticker && styles.mutedButton]}
+                style={[
+                  styles.secondaryButton,
+                  !selectedSticker && styles.mutedButton,
+                ]}
                 hitSlop={8}
               >
                 <Text style={styles.secondaryButtonText}>앞으로</Text>
@@ -505,7 +643,9 @@ export function CodiBookScreen({
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyMascot}>🐢</Text>
                   <View style={styles.speechBubble}>
-                    <Text style={styles.emptyText}>옷 추가에서 코디할 옷을 가져와봐북</Text>
+                    <Text style={styles.emptyText}>
+                      옷 추가에서 코디할 옷을 가져와봐북
+                    </Text>
                   </View>
                 </View>
               ) : null}
@@ -525,7 +665,7 @@ export function CodiBookScreen({
           </View>
         ) : null}
 
-        {mode === 'list' ? (
+        {mode === "list" ? (
           <Pressable
             onPress={openNewPicker}
             style={[styles.fab, { bottom: bottomInset + 16 }]}
@@ -544,16 +684,23 @@ type OutfitListProps = {
   outfits: Outfit[];
   tileSize: number;
   bottomInset: number;
+  emptyText: string;
   onSelect: (outfit: Outfit) => void;
 };
 
-function OutfitList({ outfits, tileSize, bottomInset, onSelect }: OutfitListProps) {
+function OutfitList({
+  outfits,
+  tileSize,
+  bottomInset,
+  emptyText,
+  onSelect,
+}: OutfitListProps) {
   if (outfits.length === 0) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyMascot}>🐢</Text>
         <View style={styles.speechBubble}>
-          <Text style={styles.emptyText}>아직 저장된 코디가 없어북</Text>
+          <Text style={styles.emptyText}>{emptyText}</Text>
         </View>
       </View>
     );
@@ -565,7 +712,10 @@ function OutfitList({ outfits, tileSize, bottomInset, onSelect }: OutfitListProp
       keyExtractor={(outfit) => String(outfit.id)}
       numColumns={GRID_COLUMNS}
       columnWrapperStyle={styles.outfitGridRow}
-      contentContainerStyle={[styles.outfitListContent, { paddingBottom: bottomInset + 24 }]}
+      contentContainerStyle={[
+        styles.outfitListContent,
+        { paddingBottom: bottomInset + 24 },
+      ]}
       renderItem={({ item }) => (
         <Pressable
           onPress={() => onSelect(item)}
@@ -585,7 +735,7 @@ function OutfitList({ outfits, tileSize, bottomInset, onSelect }: OutfitListProp
             <Text style={styles.outfitMeta}>{item.stickers.length}개</Text>
             {item.seasons.length > 0 ? (
               <Text style={styles.outfitSeasons} numberOfLines={1}>
-                {item.seasons.join(' · ')}
+                {item.seasons.join(" · ")}
               </Text>
             ) : null}
           </View>
@@ -608,10 +758,20 @@ function OutfitPreviewCanvas({
   canvasHeight,
   previewSize,
 }: OutfitPreviewCanvasProps) {
-  const layout = getPreviewLayout(stickers, canvasWidth, canvasHeight, previewSize);
+  const layout = getPreviewLayout(
+    stickers,
+    canvasWidth,
+    canvasHeight,
+    previewSize
+  );
 
   return (
-    <View style={[styles.outfitPreview, { width: previewSize, height: previewSize }]}>
+    <View
+      style={[
+        styles.outfitPreview,
+        { width: previewSize, height: previewSize },
+      ]}
+    >
       {stickers
         .slice()
         .sort((first, second) => first.zIndex - second.zIndex)
@@ -660,7 +820,10 @@ function SelectedBar({ stickers, onRemove, onArrange }: SelectedBarProps) {
               style={styles.selectedThumb}
               hitSlop={8}
             >
-              <Image source={{ uri: sticker.localImagePath }} style={styles.selectedThumbImage} />
+              <Image
+                source={{ uri: sticker.localImagePath }}
+                style={styles.selectedThumbImage}
+              />
               <Text style={styles.selectedRemove}>×</Text>
             </Pressable>
           ))
@@ -669,7 +832,10 @@ function SelectedBar({ stickers, onRemove, onArrange }: SelectedBarProps) {
       <Pressable
         onPress={onArrange}
         disabled={stickers.length === 0}
-        style={[styles.arrangeButton, stickers.length === 0 && styles.mutedButton]}
+        style={[
+          styles.arrangeButton,
+          stickers.length === 0 && styles.mutedButton,
+        ]}
         hitSlop={8}
       >
         <Text style={styles.arrangeButtonText}>배치</Text>
@@ -682,10 +848,13 @@ function getPreviewLayout(
   stickers: OutfitSticker[],
   canvasWidth: number | null,
   canvasHeight: number | null,
-  previewSize: number,
+  previewSize: number
 ) {
   if (canvasWidth && canvasHeight) {
-    const scale = Math.min(previewSize / canvasWidth, previewSize / canvasHeight);
+    const scale = Math.min(
+      previewSize / canvasWidth,
+      previewSize / canvasHeight
+    );
 
     return {
       minX: 0,
@@ -712,14 +881,14 @@ function getPreviewLayout(
       minY: Number.POSITIVE_INFINITY,
       maxX: 0,
       maxY: 0,
-    },
+    }
   );
   const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
   const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
   const inset = 12;
   const scale = Math.min(
     (previewSize - inset * 2) / contentWidth,
-    (previewSize - inset * 2) / contentHeight,
+    (previewSize - inset * 2) / contentHeight
   );
 
   return {
@@ -748,7 +917,9 @@ function CanvasSticker({
   onChange,
   onDelete,
 }: CanvasStickerProps) {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
+  const pan = useRef(
+    new Animated.ValueXY({ x: sticker.x, y: sticker.y })
+  ).current;
   const sizeAnim = useRef(new Animated.Value(sticker.size)).current;
   const isDragging = useRef(false);
   const isResizing = useRef(false);
@@ -756,6 +927,27 @@ function CanvasSticker({
   const resizeStart = useRef(sticker.size);
   const resizePositionStart = useRef({ x: sticker.x, y: sticker.y });
   const rotateStart = useRef(sticker.rotation);
+  const [imageSize, setImageSize] = useState<ImageSize | null>(null);
+
+  const handleFrame = useMemo(
+    () => getHandleFrame(sticker.size, imageSize),
+    [imageSize, sticker.size]
+  );
+  const deleteHandlePosition = getHandlePositionStyle(
+    handleFrame.x + handleFrame.width,
+    handleFrame.y,
+    sticker.size
+  );
+  const rotateHandlePosition = getHandlePositionStyle(
+    handleFrame.x,
+    handleFrame.y + handleFrame.height,
+    sticker.size
+  );
+  const resizeHandlePosition = getHandlePositionStyle(
+    handleFrame.x + handleFrame.width,
+    handleFrame.y + handleFrame.height,
+    sticker.size
+  );
 
   useEffect(() => {
     if (!isDragging.current) {
@@ -768,6 +960,29 @@ function CanvasSticker({
       sizeAnim.setValue(sticker.size);
     }
   }, [sizeAnim, sticker.size]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    setImageSize(null);
+    Image.getSize(
+      sticker.localImagePath,
+      (imageWidth, imageHeight) => {
+        if (isMounted && imageWidth > 0 && imageHeight > 0) {
+          setImageSize({ width: imageWidth, height: imageHeight });
+        }
+      },
+      () => {
+        if (isMounted) {
+          setImageSize(null);
+        }
+      }
+    );
+
+    return () => {
+      isMounted = false;
+    };
+  }, [sticker.localImagePath]);
 
   const dragResponder = useMemo(
     () =>
@@ -782,22 +997,47 @@ function CanvasSticker({
         },
         onPanResponderMove: (_, gesture) => {
           pan.setValue({
-            x: clamp(dragStart.current.x + gesture.dx, 0, Math.max(0, canvasSize.width - sticker.size)),
-            y: clamp(dragStart.current.y + gesture.dy, 0, Math.max(0, canvasSize.height - sticker.size)),
+            x: clamp(
+              dragStart.current.x + gesture.dx,
+              0,
+              Math.max(0, canvasSize.width - sticker.size)
+            ),
+            y: clamp(
+              dragStart.current.y + gesture.dy,
+              0,
+              Math.max(0, canvasSize.height - sticker.size)
+            ),
           });
         },
         onPanResponderRelease: (_, gesture) => {
           isDragging.current = false;
           const nextPosition = {
-            x: clamp(dragStart.current.x + gesture.dx, 0, Math.max(0, canvasSize.width - sticker.size)),
-            y: clamp(dragStart.current.y + gesture.dy, 0, Math.max(0, canvasSize.height - sticker.size)),
+            x: clamp(
+              dragStart.current.x + gesture.dx,
+              0,
+              Math.max(0, canvasSize.width - sticker.size)
+            ),
+            y: clamp(
+              dragStart.current.y + gesture.dy,
+              0,
+              Math.max(0, canvasSize.height - sticker.size)
+            ),
           };
 
           pan.setValue(nextPosition);
           onChange(nextPosition);
         },
       }),
-    [canvasSize.height, canvasSize.width, onChange, onSelect, pan, sticker.size, sticker.x, sticker.y],
+    [
+      canvasSize.height,
+      canvasSize.width,
+      onChange,
+      onSelect,
+      pan,
+      sticker.size,
+      sticker.x,
+      sticker.y,
+    ]
   );
 
   const resizeResponder = useMemo(
@@ -816,13 +1056,16 @@ function CanvasSticker({
           const nextSize = clamp(
             resizeStart.current + Math.max(gesture.dx, gesture.dy),
             MIN_STICKER_SIZE,
-            Math.max(MIN_STICKER_SIZE, Math.min(canvasSize.width || 240, canvasSize.height || 240)),
+            Math.max(
+              MIN_STICKER_SIZE,
+              Math.min(canvasSize.width || 240, canvasSize.height || 240)
+            )
           );
           const nextPosition = clampStickerPosition(
             resizePositionStart.current.x,
             resizePositionStart.current.y,
             nextSize,
-            canvasSize,
+            canvasSize
           );
 
           sizeAnim.setValue(nextSize);
@@ -833,13 +1076,16 @@ function CanvasSticker({
           const nextSize = clamp(
             resizeStart.current + Math.max(gesture.dx, gesture.dy),
             MIN_STICKER_SIZE,
-            Math.max(MIN_STICKER_SIZE, Math.min(canvasSize.width || 240, canvasSize.height || 240)),
+            Math.max(
+              MIN_STICKER_SIZE,
+              Math.min(canvasSize.width || 240, canvasSize.height || 240)
+            )
           );
           const nextPosition = clampStickerPosition(
             resizePositionStart.current.x,
             resizePositionStart.current.y,
             nextSize,
-            canvasSize,
+            canvasSize
           );
 
           sizeAnim.setValue(nextSize);
@@ -850,7 +1096,16 @@ function CanvasSticker({
           });
         },
       }),
-    [canvasSize, onChange, onSelect, pan, sizeAnim, sticker.size, sticker.x, sticker.y],
+    [
+      canvasSize,
+      onChange,
+      onSelect,
+      pan,
+      sizeAnim,
+      sticker.size,
+      sticker.x,
+      sticker.y,
+    ]
   );
 
   const rotateResponder = useMemo(
@@ -869,7 +1124,7 @@ function CanvasSticker({
           });
         },
       }),
-    [onChange, onSelect, sticker.rotation],
+    [onChange, onSelect, sticker.rotation]
   );
 
   return (
@@ -902,25 +1157,55 @@ function CanvasSticker({
                 style={[
                   styles.stickerOutlineImage,
                   {
-                    transform: [{ translateX: offset.x }, { translateY: offset.y }],
+                    transform: [
+                      { scaleX: 1.02 },
+                      { scaleY: 1.02 },
+                      { translateX: offset.x },
+                      { translateY: offset.y },
+                    ],
                   },
                 ]}
               />
             ))}
           </View>
         ) : null}
-        <Image source={{ uri: sticker.localImagePath }} style={styles.stickerImage} />
+        <Image
+          source={{ uri: sticker.localImagePath }}
+          style={styles.stickerImage}
+        />
       </View>
 
       {selected ? (
         <>
-          <Pressable onPress={onDelete} style={styles.deleteHandle} hitSlop={8}>
+          <Pressable
+            onPress={onDelete}
+            style={[
+              styles.handleButton,
+              styles.deleteHandle,
+              deleteHandlePosition,
+            ]}
+            hitSlop={8}
+          >
             <Text style={styles.handleText}>×</Text>
           </Pressable>
-          <View style={styles.rotateHandle} {...rotateResponder.panHandlers}>
+          <View
+            style={[
+              styles.handleButton,
+              styles.rotateHandle,
+              rotateHandlePosition,
+            ]}
+            {...rotateResponder.panHandlers}
+          >
             <Text style={styles.handleText}>↻</Text>
           </View>
-          <View style={styles.resizeHandle} {...resizeResponder.panHandlers}>
+          <View
+            style={[
+              styles.handleButton,
+              styles.resizeHandle,
+              resizeHandlePosition,
+            ]}
+            {...resizeResponder.panHandlers}
+          >
             <Text style={styles.handleText}>↘</Text>
           </View>
         </>
@@ -933,10 +1218,106 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
-function clampStickerPosition(x: number, y: number, size: number, canvasSize: CanvasSize) {
+function clampStickerPosition(
+  x: number,
+  y: number,
+  size: number,
+  canvasSize: CanvasSize
+) {
   return {
     x: clamp(x, 0, Math.max(0, canvasSize.width - size)),
     y: clamp(y, 0, Math.max(0, canvasSize.height - size)),
+  };
+}
+
+function outfitMatchesSearch(
+  outfit: Outfit,
+  query: string,
+  wardrobeItemsById: Map<number, ClothingItem>,
+  colorOptions: readonly ColorOption[]
+) {
+  const searchableText = [
+    outfit.name,
+    `${outfit.stickers.length}개`,
+    ...outfit.seasons,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (searchableText.includes(query)) {
+    return true;
+  }
+
+  return outfit.stickers.some((sticker) => {
+    const wardrobeItem = wardrobeItemsById.get(sticker.clothingItemId);
+
+    return wardrobeItem
+      ? clothingMatchesSearch(wardrobeItem, query, colorOptions)
+      : false;
+  });
+}
+
+function getHandleFrame(stickerSize: number, imageSize: ImageSize | null): VisualFrame {
+  const visibleFrame = getVisibleImageFrame(stickerSize, imageSize);
+  const minSpan = Math.min(MIN_HANDLE_SPAN, stickerSize);
+  const width = Math.min(stickerSize, Math.max(visibleFrame.width, minSpan));
+  const height = Math.min(stickerSize, Math.max(visibleFrame.height, minSpan));
+  const centerX = visibleFrame.x + visibleFrame.width / 2;
+  const centerY = visibleFrame.y + visibleFrame.height / 2;
+
+  return {
+    x: clamp(centerX - width / 2, 0, Math.max(0, stickerSize - width)),
+    y: clamp(centerY - height / 2, 0, Math.max(0, stickerSize - height)),
+    width,
+    height,
+  };
+}
+
+function getVisibleImageFrame(stickerSize: number, imageSize: ImageSize | null): VisualFrame {
+  if (!imageSize || imageSize.width <= 0 || imageSize.height <= 0) {
+    return { x: 0, y: 0, width: stickerSize, height: stickerSize };
+  }
+
+  const aspectRatio = imageSize.width / imageSize.height;
+
+  if (aspectRatio >= 1) {
+    const height = stickerSize / aspectRatio;
+
+    return {
+      x: 0,
+      y: (stickerSize - height) / 2,
+      width: stickerSize,
+      height,
+    };
+  }
+
+  const width = stickerSize * aspectRatio;
+
+  return {
+    x: (stickerSize - width) / 2,
+    y: 0,
+    width,
+    height: stickerSize,
+  };
+}
+
+function getHandlePositionStyle(
+  centerX: number,
+  centerY: number,
+  stickerSize: number
+): ViewStyle {
+  const safeSize = Math.max(1, stickerSize);
+  const left = `${(centerX / safeSize) * 100}%` as `${number}%`;
+  const top = `${(centerY / safeSize) * 100}%` as `${number}%`;
+
+  return {
+    left,
+    top,
+    transform: [
+      { translateX: -HANDLE_SIZE / 2 },
+      { translateY: -HANDLE_SIZE / 2 },
+    ],
   };
 }
 
@@ -954,54 +1335,67 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 16,
   },
   title: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   caption: {
     marginTop: 4,
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: "400",
     color: COLORS.textSecondary,
   },
   headerActions: {
     minWidth: 96,
     minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: 8,
+  },
+  mascotSlot: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.secondary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  mascot: {
+    fontSize: 28,
   },
   headerSaveButton: {
     minHeight: 42,
     paddingHorizontal: 16,
     borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   headerSaveButtonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.surface,
   },
   headerDangerButton: {
     minHeight: 42,
     paddingHorizontal: 14,
     borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.danger,
   },
   headerDangerButtonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.surface,
   },
   screenBody: {
@@ -1011,28 +1405,28 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: 16,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   primaryButtonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.surface,
   },
   secondaryButton: {
     minHeight: 44,
     paddingHorizontal: 14,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
   secondaryButtonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primary,
   },
   disabledButton: {
@@ -1049,7 +1443,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   outfitCard: {
-    overflow: 'hidden',
+    overflow: "hidden",
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -1059,8 +1453,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.canvasBg,
   },
   outfitPreviewImage: {
-    position: 'absolute',
-    resizeMode: 'contain',
+    position: "absolute",
+    resizeMode: "contain",
   },
   outfitLabelRow: {
     minHeight: 56,
@@ -1068,24 +1462,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   outfitName: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   outfitMeta: {
     marginTop: 2,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
   outfitSeasons: {
     marginTop: 2,
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.primary,
+  },
+  listSearchWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   pickerControls: {
     paddingHorizontal: 16,
@@ -1100,7 +1498,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: "400",
     color: COLORS.textPrimary,
   },
   filterContent: {
@@ -1114,8 +1512,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   categoryChipSelected: {
     backgroundColor: COLORS.secondary,
@@ -1123,7 +1521,7 @@ const styles = StyleSheet.create({
   },
   categoryChipText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
   categoryChipTextSelected: {
@@ -1131,8 +1529,8 @@ const styles = StyleSheet.create({
   },
   centerContent: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   gridContent: {
     paddingHorizontal: 16,
@@ -1144,7 +1542,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   libraryTile: {
-    overflow: 'hidden',
+    overflow: "hidden",
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -1155,14 +1553,14 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   libraryImageFrame: {
-    width: '100%',
+    width: "100%",
     aspectRatio: 1,
     backgroundColor: COLORS.surface,
   },
   libraryImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+    width: "100%",
+    height: "100%",
+    resizeMode: "contain",
   },
   libraryText: {
     minHeight: 34,
@@ -1171,18 +1569,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
   pickBadge: {
-    position: 'absolute',
+    position: "absolute",
     right: 8,
     top: 8,
     minWidth: 32,
     minHeight: 32,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   pickBadgeSelected: {
@@ -1190,11 +1588,11 @@ const styles = StyleSheet.create({
   },
   pickBadgeText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.surface,
   },
   selectedBar: {
-    position: 'absolute',
+    position: "absolute",
     left: 16,
     right: 16,
     bottom: 16,
@@ -1204,18 +1602,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   selectedList: {
-    alignItems: 'center',
+    alignItems: "center",
     gap: 8,
   },
   selectedEmptyText: {
     paddingHorizontal: 8,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
   selectedThumb: {
@@ -1227,73 +1625,72 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   selectedThumbImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+    width: "100%",
+    height: "100%",
+    resizeMode: "contain",
   },
   selectedRemove: {
-    position: 'absolute',
+    position: "absolute",
     right: -6,
     top: -8,
     width: 22,
     height: 22,
     borderRadius: 11,
-    overflow: 'hidden',
-    textAlign: 'center',
+    overflow: "hidden",
+    textAlign: "center",
     lineHeight: 22,
     backgroundColor: COLORS.danger,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.surface,
   },
   arrangeButton: {
     minWidth: 64,
     minHeight: 52,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   arrangeButtonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.surface,
   },
   fab: {
-    position: 'absolute',
+    position: "absolute",
     right: 16,
     width: 56,
     height: 56,
     borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   fabText: {
     fontSize: 30,
-    fontWeight: '700',
-    lineHeight: 34,
+    fontWeight: "700",
     color: COLORS.surface,
   },
   canvasActions: {
     paddingHorizontal: 16,
     paddingBottom: 8,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
     gap: 8,
   },
   canvasIconButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   canvasIconButtonText: {
     fontSize: 26,
-    fontWeight: '700',
+    fontWeight: "700",
     lineHeight: 30,
     color: COLORS.surface,
   },
@@ -1310,12 +1707,12 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   seasonChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 6,
   },
   seasonChip: {
@@ -1324,8 +1721,8 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     borderWidth: 1,
     borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.surface,
   },
   seasonChipSelected: {
@@ -1334,7 +1731,7 @@ const styles = StyleSheet.create({
   },
   seasonChipText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textSecondary,
   },
   seasonChipTextSelected: {
@@ -1348,12 +1745,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.canvasBg,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   emptyState: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 24,
     gap: 16,
   },
@@ -1372,70 +1769,54 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: "400",
     color: COLORS.textPrimary,
-    textAlign: 'center',
+    textAlign: "center",
   },
   sticker: {
-    position: 'absolute',
+    position: "absolute",
   },
   stickerTouch: {
-    width: '100%',
-    height: '100%',
-    overflow: 'hidden',
+    width: "100%",
+    height: "100%",
+    overflow: "hidden",
   },
   stickerTouchSelected: {
     opacity: 1,
   },
   stickerOutlineImage: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    resizeMode: "contain",
     tintColor: COLORS.primaryLight,
     opacity: 0.62,
   },
   stickerImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+    width: "100%",
+    height: "100%",
+    resizeMode: "contain",
+  },
+  handleButton: {
+    position: "absolute",
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE,
+    borderRadius: HANDLE_SIZE / 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   deleteHandle: {
-    position: 'absolute',
-    right: -20,
-    top: -20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: COLORS.danger,
   },
   rotateHandle: {
-    position: 'absolute',
-    left: -20,
-    bottom: -20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: COLORS.accent,
   },
   resizeHandle: {
-    position: 'absolute',
-    right: -20,
-    bottom: -20,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: COLORS.primary,
   },
   handleText: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.surface,
   },
 });

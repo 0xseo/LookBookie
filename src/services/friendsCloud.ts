@@ -74,7 +74,7 @@ export async function sendFriendRequestByEmail(emailInput: string) {
   }
 
   if (!friend) {
-    throw new Error('해당 이메일의 룩북이 프로필을 찾지 못했어요.');
+    throw new Error('해당 이메일의 룩부기 프로필을 찾지 못했어요.');
   }
 
   if (friend.id === user.id) {

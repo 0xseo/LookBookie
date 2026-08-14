@@ -1,8 +1,8 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-const WARDROBE_IMAGE_DIRECTORY = 'lookbookie-clothes';
-const EDITED_IMAGE_DIRECTORY = 'lookbookie-edits';
+const WARDROBE_IMAGE_DIRECTORY = 'lookboogie-clothes';
+const EDITED_IMAGE_DIRECTORY = 'lookboogie-edits';
 const MAX_IMAGE_WIDTH = 1400;
 
 export type CropMode = 'original' | 'square' | 'portrait45' | 'portrait34';

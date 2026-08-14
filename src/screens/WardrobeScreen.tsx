@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -10,14 +10,15 @@ import {
   TextInput,
   useWindowDimensions,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { COLORS } from '../../constants/colors';
-import type { CategoryFilter, ClothingItem } from '../types/clothing';
-import { CATEGORY_FILTERS } from '../types/clothing';
-import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
-import { clothingMatchesSearch } from '../services/colorSearch';
+import { COLORS } from "../../constants/colors";
+import type { CategoryFilter, ClothingItem } from "../types/clothing";
+import { CATEGORY_FILTERS } from "../types/clothing";
+import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
+import { clothingMatchesSearch } from "../services/colorSearch";
+import { CloudCheck, CloudAlert } from "lucide-react-native";
 
 type WardrobeScreenProps = {
   items: ClothingItem[];
@@ -27,6 +28,7 @@ type WardrobeScreenProps = {
   onSelectCategory: (category: CategoryFilter) => void;
   onItemPress: (item: ClothingItem) => void;
   onAddPress: () => void;
+  onRefresh: () => void | Promise<void>;
 };
 
 const GRID_COLUMNS = 3;
@@ -41,18 +43,22 @@ export function WardrobeScreen({
   onSelectCategory,
   onItemPress,
   onAddPress,
+  onRefresh,
 }: WardrobeScreenProps) {
   const { width } = useWindowDimensions();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const { colorOptions } = useColorPaletteOptions();
 
   const tileSize = useMemo(() => {
-    const availableWidth = width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1);
+    const availableWidth =
+      width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1);
 
     return Math.floor(availableWidth / GRID_COLUMNS);
   }, [width]);
   const visibleItems = useMemo(() => {
-    return items.filter((item) => clothingMatchesSearch(item, searchQuery, colorOptions));
+    return items.filter((item) =>
+      clothingMatchesSearch(item, searchQuery, colorOptions)
+    );
   }, [colorOptions, items, searchQuery]);
 
   return (
@@ -60,12 +66,18 @@ export function WardrobeScreen({
       <View style={styles.container}>
         <View style={styles.header}>
           <View>
-            <Text style={styles.logo}>룩북이</Text>
+            <Text style={styles.logo}>룩부기 옷장</Text>
             <Text style={styles.headerCaption}>오프라인 옷장을 차곡차곡</Text>
           </View>
-          <View style={styles.mascotSlot} accessibilityLabel="룩북이 마스코트 자리">
+          <Pressable
+            onPress={onRefresh}
+            style={styles.mascotSlot}
+            accessibilityLabel="룩부기 마스코트 자리"
+            accessibilityRole="button"
+            hitSlop={8}
+          >
             <Text style={styles.mascot}>🐢</Text>
-          </View>
+          </Pressable>
         </View>
 
         <View style={styles.searchWrap}>
@@ -92,7 +104,10 @@ export function WardrobeScreen({
               <Pressable
                 key={category}
                 onPress={() => onSelectCategory(category)}
-                style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
+                style={[
+                  styles.categoryChip,
+                  isSelected && styles.categoryChipSelected,
+                ]}
                 hitSlop={8}
               >
                 <Text
@@ -136,10 +151,11 @@ export function WardrobeScreen({
                 hitSlop={8}
               >
                 <View style={styles.itemImageFrame}>
-                  <Image source={{ uri: item.localImagePath }} style={styles.itemImage} />
-                  <View style={[styles.syncPill, getSyncPillStyle(item.cloudSyncStatus)]}>
-                    <Text style={styles.syncText}>{getSyncLabel(item.cloudSyncStatus)}</Text>
-                  </View>
+                  <Image
+                    source={{ uri: item.localImagePath }}
+                    style={styles.itemImage}
+                  />
+                  <SyncStatusBadge status={item.cloudSyncStatus} />
                 </View>
                 <View style={styles.brandRow}>
                   <Text style={styles.brandText} numberOfLines={1}>
@@ -165,32 +181,38 @@ export function WardrobeScreen({
   );
 }
 
-function getSyncLabel(status: ClothingItem['cloudSyncStatus']) {
-  if (status === 'synced') {
-    return '☁';
-  }
+function SyncStatusBadge({ status }: { status: ClothingItem["cloudSyncStatus"] }) {
+  const Icon = status === "synced" ? CloudCheck : status === "failed" ? CloudAlert : null;
 
-  if (status === 'pending') {
-    return '⇧';
-  }
-
-  if (status === 'failed') {
-    return '!';
-  }
-
-  return '•';
+  return (
+    <View style={[styles.syncPill, getSyncPillStyle(status)]}>
+      {Icon ? (
+        <Icon color={COLORS.surface} size={17} strokeWidth={2.6} />
+      ) : (
+        <Text style={styles.syncText}>{getSyncText(status)}</Text>
+      )}
+    </View>
+  );
 }
 
-function getSyncPillStyle(status: ClothingItem['cloudSyncStatus']) {
-  if (status === 'synced') {
+function getSyncText(status: ClothingItem["cloudSyncStatus"]) {
+  if (status === "pending") {
+    return "⇧";
+  }
+
+  return "•";
+}
+
+function getSyncPillStyle(status: ClothingItem["cloudSyncStatus"]) {
+  if (status === "synced") {
     return styles.syncPillSynced;
   }
 
-  if (status === 'failed') {
+  if (status === "failed") {
     return styles.syncPillFailed;
   }
 
-  if (status === 'pending') {
+  if (status === "pending") {
     return styles.syncPillPending;
   }
 
@@ -202,7 +224,9 @@ function EmptyWardrobe() {
     <View style={styles.emptyState}>
       <Text style={styles.emptyMascot}>🐢</Text>
       <View style={styles.speechBubble}>
-        <Text style={styles.emptyText}>아직 옷장이 비어있어북! 첫 옷을 등록해봐북 🐢</Text>
+        <Text style={styles.emptyText}>
+          아직 옷장이 비어있어북! 첫 옷을 등록해봐북 🐢
+        </Text>
       </View>
     </View>
   );
@@ -222,27 +246,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   logo: {
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
   },
   headerCaption: {
     marginTop: 4,
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: "400",
     color: COLORS.textSecondary,
   },
   mascotSlot: {
     width: 52,
     height: 52,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.secondary,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -262,7 +286,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: "400",
     color: COLORS.textPrimary,
   },
   filterContent: {
@@ -280,8 +304,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   categoryChipSelected: {
     backgroundColor: COLORS.secondary,
@@ -289,7 +313,7 @@ const styles = StyleSheet.create({
   },
   categoryChipText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
   categoryChipTextSelected: {
@@ -297,14 +321,14 @@ const styles = StyleSheet.create({
   },
   centerContent: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 24,
   },
   loadingText: {
     marginTop: 8,
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: "400",
     color: COLORS.textSecondary,
   },
   gridContent: {
@@ -313,38 +337,38 @@ const styles = StyleSheet.create({
   },
   emptyGridContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   gridRow: {
     gap: 8,
     marginBottom: 8,
   },
   gridTile: {
-    overflow: 'hidden',
+    overflow: "hidden",
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
   itemImageFrame: {
-    width: '100%',
+    width: "100%",
     aspectRatio: 1,
     backgroundColor: COLORS.surface,
   },
   itemImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+    width: "100%",
+    height: "100%",
+    resizeMode: "contain",
   },
   syncPill: {
-    position: 'absolute',
+    position: "absolute",
     top: 8,
     right: 8,
     width: 28,
     minHeight: 28,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   syncPillSynced: {
     backgroundColor: COLORS.primary,
@@ -360,7 +384,7 @@ const styles = StyleSheet.create({
   },
   syncText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.surface,
   },
   brandRow: {
@@ -368,16 +392,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    justifyContent: 'center',
+    justifyContent: "center",
     backgroundColor: COLORS.surface,
   },
   brandText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textPrimary,
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingHorizontal: 24,
   },
   emptyMascot: {
@@ -397,25 +421,25 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: "400",
     lineHeight: 20,
     color: COLORS.textPrimary,
-    textAlign: 'center',
+    textAlign: "center",
   },
   fab: {
-    position: 'absolute',
+    position: "absolute",
     right: 16,
     width: 56,
     height: 56,
     borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   fabText: {
     fontSize: 30,
-    fontWeight: '700',
-    lineHeight: 34,
+    fontWeight: "700",
+    textAlign: "center",
     color: COLORS.surface,
   },
 });

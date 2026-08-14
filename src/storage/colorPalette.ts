@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ColorOption } from '../types/clothing';
 import { sanitizeColorOption } from '../services/colorSearch';
 
-const CUSTOM_COLOR_STORAGE_KEY = 'lookbookie.customColors.v1';
+const CUSTOM_COLOR_STORAGE_KEY = 'lookboogie.customColors.v1';
 
 export async function loadCustomColorOptions() {
   try {

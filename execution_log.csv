@@ -6,7 +6,7 @@
 [2026-08-14] | [Phase 2] | Added bottom tab app shell for Wardrobe, CodiBook, and MyPage; added local outfits table and codi canvas screens | Separate closet browsing from outfit composition and prepare the app for styling workflows
 [2026-08-14] | [Phase 2] | Added Expo image manipulation and slider dependencies plus local PNG compression pipeline in clothing registration | Start the on-device image processing path while keeping Expo emulator compatibility
 [2026-08-14] | [Phase 2] | Implemented codi canvas sticker add, drag, resize, rotate, delete, layer-forward, reset, save, and restore flows | Let users compose saved outfits from locally stored wardrobe items without network access
-[2026-08-14] | [Phase 3] | Applied LookBookie Supabase schema, RLS policies, and clothes storage bucket migration | Prepare cloud database and storage for authenticated wardrobe backups
+[2026-08-14] | [Phase 3] | Applied LookBoogie Supabase schema, RLS policies, and clothes storage bucket migration | Prepare cloud database and storage for authenticated wardrobe backups
 [2026-08-14] | [Phase 3] | Added Supabase env setup, React Native client, auth helpers, and clothing cloud upload service | Connect local-first wardrobe registration to optional cloud sync
 [2026-08-14] | [Phase 3] | Added owner_id indexes and optimized RLS policies after Supabase performance advisor warnings | Keep authenticated cloud queries scalable as wardrobe and outfit data grows
 [2026-08-14] | [Phase 4] | Added Supabase profiles/friendships schema and friend wardrobe read policy | Enable online lookup of another account wardrobe after adding them as a friend
@@ -36,3 +36,13 @@
 [2026-08-14] | [Phase 2] | Removed CodiBook sticker borders and added codi name plus season chips to the canvas editor and saved outfit cards | Let users save clearer codi metadata without visual frames around placed clothes
 [2026-08-14] | [Phase 3] | Added local and Supabase outfit seasons storage with a database migration and friend outfit read mapping | Keep codi season metadata available offline and in shared friend outfit views
 [2026-08-14] | [UX Fix] | Replaced CodiBook detail back controls with header save/delete actions, unified wardrobe/codi add FABs, and added alpha-shaped selected sticker outlines | Clarify which clothing item is being edited while keeping add actions consistent
+[2026-08-14] | [UX Fix] | Moved CodiBook delete, rotate, and resize handles to the visible image bounds with a minimum handle spacing fallback | Attach sticker tools to the clothing image instead of transparent square padding
+[2026-08-14] | [UX Fix] | Added CodiBook list search across codi name, season, and included wardrobe item metadata | Let users find saved outfits by styling context and clothing details
+[2026-08-14] | [Branding] | Installed Lucide SVG icon support, converted bottom tabs to vector icons, and renamed app branding to LookBoogie/룩부기 | Modernize icon rendering and align product naming with the new brand
+[2026-08-14] | [UX Fix] | Replaced wardrobe cloud sync text badges with Lucide CloudCheck and CloudAlert icons | Make cloud sync states visually consistent with the new vector icon system
+[2026-08-14] | [UX Fix] | Renamed wardrobe and codi headers to 룩부기 옷장/룩부기 코디북 and wired turtle header buttons to refresh local data | Make top navigation branding consistent and give users an obvious reload affordance
+[2026-08-14] | [UX Fix] | Matched the CodiBook header turtle button size to the Wardrobe header turtle button | Keep LookBoogie header controls visually consistent across tabs
+[2026-08-14] | [Bug Fix] | Switched backup import to Expo FileSystem file picker with a legacy read fallback and clearer permission error messaging | Avoid File.text read-permission failures when importing JSON backups from external file locations
+[2026-08-14] | [Phase 4 Fix] | Invalidated restored cloud-sync checks until verification, added remote-row reconciliation, and recreated missing cloud records during retry sync | Prevent backup metadata from claiming a deleted Supabase row is still synced
+[2026-08-14] | [Release Setup] | Added EAS preview APK and production Android App Bundle build profiles | Enable direct Android test installation now while preserving a separate Play Store build path
+[2026-08-14] | [Release Build] | Linked the existing EAS project, uploaded preview Supabase variables, generated Android signing credentials, and produced a verified local preview APK | Deliver an installable LookBoogie Android build while the matching cloud build runs
