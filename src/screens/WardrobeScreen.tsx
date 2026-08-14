@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -40,12 +41,33 @@ export function WardrobeScreen({
   onAddPress,
 }: WardrobeScreenProps) {
   const { width } = useWindowDimensions();
+  const [searchQuery, setSearchQuery] = useState('');
 
   const tileSize = useMemo(() => {
     const availableWidth = width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1);
 
     return Math.floor(availableWidth / GRID_COLUMNS);
   }, [width]);
+  const visibleItems = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return items;
+    }
+
+    return items.filter((item) =>
+      [
+        item.name,
+        item.brand,
+        item.category,
+        item.color,
+        ...item.seasons,
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedQuery),
+    );
+  }, [items, searchQuery]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -58,6 +80,17 @@ export function WardrobeScreen({
           <View style={styles.mascotSlot} accessibilityLabel="룩북이 마스코트 자리">
             <Text style={styles.mascot}>🐢</Text>
           </View>
+        </View>
+
+        <View style={styles.searchWrap}>
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="이름, 브랜드, 계절, 색 검색"
+            placeholderTextColor={COLORS.textSecondary}
+            style={styles.searchInput}
+            returnKeyType="search"
+          />
         </View>
 
         <ScrollView
@@ -96,14 +129,14 @@ export function WardrobeScreen({
           </View>
         ) : (
           <FlatList
-            data={items}
+            data={visibleItems}
             keyExtractor={(item) => String(item.id)}
             numColumns={GRID_COLUMNS}
             columnWrapperStyle={styles.gridRow}
             contentContainerStyle={[
               styles.gridContent,
               { paddingBottom: bottomInset + 24 },
-              items.length === 0 && styles.emptyGridContent,
+              visibleItems.length === 0 && styles.emptyGridContent,
             ]}
             renderItem={({ item }) => (
               <Pressable
@@ -143,18 +176,18 @@ export function WardrobeScreen({
 
 function getSyncLabel(status: ClothingItem['cloudSyncStatus']) {
   if (status === 'synced') {
-    return '클라우드';
+    return '☁';
   }
 
   if (status === 'pending') {
-    return '대기';
+    return '⇧';
   }
 
   if (status === 'failed') {
-    return '실패';
+    return '!';
   }
 
-  return '로컬';
+  return '•';
 }
 
 function getSyncPillStyle(status: ClothingItem['cloudSyncStatus']) {
@@ -225,6 +258,21 @@ const styles = StyleSheet.create({
   },
   mascot: {
     fontSize: 28,
+  },
+  searchWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  searchInput: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    fontSize: 14,
+    fontWeight: '400',
+    color: COLORS.textPrimary,
   },
   filterContent: {
     paddingHorizontal: 16,
@@ -301,8 +349,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
-    minHeight: 24,
-    paddingHorizontal: 8,
+    width: 28,
+    minHeight: 28,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -320,7 +368,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.textSecondary,
   },
   syncText: {
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '700',
     color: COLORS.surface,
   },

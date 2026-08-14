@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -17,8 +18,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
 import { syncOutfitToCloud } from '../services/outfitCloud';
-import { insertOutfit, listOutfits } from '../storage/database';
-import type { ClothingItem } from '../types/clothing';
+import { deleteOutfit, insertOutfit, listOutfits, updateOutfit } from '../storage/database';
+import {
+  CATEGORY_FILTERS,
+  type CategoryFilter,
+  type ClothingItem,
+} from '../types/clothing';
 import type { Outfit, OutfitSticker } from '../types/outfit';
 
 type CodiBookScreenProps = {
@@ -34,7 +39,7 @@ type CanvasSize = {
   height: number;
 };
 
-type CodiMode = 'library' | 'canvas';
+type CodiMode = 'list' | 'picker' | 'canvas';
 
 const GRID_COLUMNS = 3;
 const GRID_GAP = 8;
@@ -50,11 +55,15 @@ export function CodiBookScreen({
   onOpenWardrobe,
 }: CodiBookScreenProps) {
   const { width } = useWindowDimensions();
-  const [mode, setMode] = useState<CodiMode>('library');
+  const [mode, setMode] = useState<CodiMode>('list');
   const [stickers, setStickers] = useState<OutfitSticker[]>([]);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
+  const [editingOutfitId, setEditingOutfitId] = useState<number | null>(null);
+  const [editingOutfitName, setEditingOutfitName] = useState('');
   const [canvasSize, setCanvasSize] = useState<CanvasSize>({ width: 0, height: 0 });
   const [outfits, setOutfits] = useState<Outfit[]>([]);
+  const [pickerCategory, setPickerCategory] = useState<CategoryFilter>('전체');
+  const [pickerQuery, setPickerQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const tileSize = useMemo(() => {
@@ -62,11 +71,25 @@ export function CodiBookScreen({
 
     return Math.floor(availableWidth / GRID_COLUMNS);
   }, [width]);
-
   const selectedSticker = useMemo(
     () => stickers.find((sticker) => sticker.id === selectedStickerId),
     [selectedStickerId, stickers],
   );
+  const pickerItems = useMemo(() => {
+    const query = pickerQuery.trim().toLowerCase();
+
+    return items.filter((item) => {
+      const categoryMatches = pickerCategory === '전체' || item.category === pickerCategory;
+      const queryMatches =
+        !query ||
+        [item.name, item.brand, item.category, item.color, ...item.seasons]
+          .join(' ')
+          .toLowerCase()
+          .includes(query);
+
+      return categoryMatches && queryMatches;
+    });
+  }, [items, pickerCategory, pickerQuery]);
 
   const loadSavedOutfits = useCallback(async () => {
     try {
@@ -82,6 +105,30 @@ export function CodiBookScreen({
   useEffect(() => {
     loadSavedOutfits();
   }, [loadSavedOutfits]);
+
+  const openNewPicker = () => {
+    setEditingOutfitId(null);
+    setEditingOutfitName('');
+    setStickers([]);
+    setSelectedStickerId(null);
+    setPickerCategory('전체');
+    setPickerQuery('');
+    setMode('picker');
+  };
+
+  const openOutfit = (outfit: Outfit) => {
+    const restoredStickers = outfit.stickers.map((sticker, index) => ({
+      ...sticker,
+      id: `outfit-${outfit.id}-${index}-${Date.now()}`,
+      zIndex: index + 1,
+    }));
+
+    setEditingOutfitId(outfit.id);
+    setEditingOutfitName(outfit.name);
+    setStickers(restoredStickers);
+    setSelectedStickerId(restoredStickers[restoredStickers.length - 1]?.id ?? null);
+    setMode('canvas');
+  };
 
   const toggleStickerFromItem = (item: ClothingItem) => {
     const existingSticker = stickers.find((sticker) => sticker.clothingItemId === item.id);
@@ -131,33 +178,40 @@ export function CodiBookScreen({
     updateSticker(selectedSticker.id, { zIndex: topZIndex + 1 });
   };
 
-  const resetCanvas = () => {
-    setStickers([]);
-    setSelectedStickerId(null);
-    setMode('library');
-  };
-
   const saveOutfit = async () => {
     if (stickers.length === 0) {
-      Alert.alert('저장할 코디가 없어북', '옷 고르기에서 옷을 먼저 선택해 주세요.');
+      Alert.alert('저장할 코디가 없어북', '옷을 먼저 선택해 주세요.');
       return;
     }
 
     setIsSaving(true);
 
     try {
-      const outfitName = `코디 ${outfits.length + 1}`;
-      await insertOutfit({
-        name: outfitName,
-        stickers,
-      });
+      const outfitName = editingOutfitName || `코디 ${outfits.length + 1}`;
+
+      if (editingOutfitId) {
+        await updateOutfit({
+          id: editingOutfitId,
+          name: outfitName,
+          stickers,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        await insertOutfit({
+          name: outfitName,
+          stickers,
+        });
+      }
+
       const cloudResult = await syncOutfitToCloud({
         name: outfitName,
         stickers,
         wardrobeItems: items,
       });
+
       await loadSavedOutfits();
-      onOutfitSaved();
+      await onOutfitSaved();
+      setMode('list');
       Alert.alert(
         '저장했어북',
         cloudResult.synced
@@ -174,16 +228,27 @@ export function CodiBookScreen({
     }
   };
 
-  const loadOutfitOnCanvas = (outfit: Outfit) => {
-    const restoredStickers = outfit.stickers.map((sticker, index) => ({
-      ...sticker,
-      id: `outfit-${outfit.id}-${index}-${Date.now()}`,
-      zIndex: index + 1,
-    }));
+  const confirmDeleteOutfit = () => {
+    if (!editingOutfitId) {
+      return;
+    }
 
-    setStickers(restoredStickers);
-    setSelectedStickerId(restoredStickers[restoredStickers.length - 1]?.id ?? null);
-    setMode('canvas');
+    Alert.alert('코디를 삭제할까북?', '저장된 코디북 목록에서 사라져요.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteOutfit(editingOutfitId);
+          await loadSavedOutfits();
+          await onOutfitSaved();
+          setMode('list');
+          setEditingOutfitId(null);
+          setStickers([]);
+          setSelectedStickerId(null);
+        },
+      },
+    ]);
   };
 
   return (
@@ -192,35 +257,63 @@ export function CodiBookScreen({
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>코디북</Text>
-            <Text style={styles.caption}>옷을 고르고, 따로 배치해요</Text>
+            <Text style={styles.caption}>저장한 코디를 보고 수정해요</Text>
           </View>
-          <View style={styles.headerActions}>
-            <Pressable onPress={resetCanvas} style={styles.secondaryButton} hitSlop={8}>
-              <Text style={styles.secondaryButtonText}>Reset</Text>
+          {mode === 'list' ? (
+            <Pressable onPress={openNewPicker} style={styles.primarySquareButton} hitSlop={8}>
+              <Text style={styles.primarySquareButtonText}>+</Text>
             </Pressable>
-            <Pressable
-              onPress={saveOutfit}
-              disabled={isSaving}
-              style={[styles.primaryButton, isSaving && styles.disabledButton]}
-              hitSlop={8}
-            >
-              {isSaving ? (
-                <ActivityIndicator color={COLORS.surface} />
-              ) : (
-                <Text style={styles.primaryButtonText}>저장</Text>
-              )}
+          ) : (
+            <Pressable onPress={() => setMode('list')} style={styles.secondaryButton} hitSlop={8}>
+              <Text style={styles.secondaryButtonText}>목록</Text>
             </Pressable>
-          </View>
+          )}
         </View>
 
-        <View style={styles.segmentedControl}>
-          <ModeButton label="옷 고르기" selected={mode === 'library'} onPress={() => setMode('library')} />
-          <ModeButton label={`배치하기 ${stickers.length}`} selected={mode === 'canvas'} onPress={() => setMode('canvas')} />
-        </View>
+        {mode === 'list' ? (
+          <OutfitList
+            outfits={outfits}
+            bottomInset={bottomInset}
+            onSelect={openOutfit}
+            onAdd={openNewPicker}
+          />
+        ) : null}
 
-        {mode === 'library' ? (
+        {mode === 'picker' ? (
           <View style={styles.screenBody}>
-            <SavedOutfits outfits={outfits} onSelect={loadOutfitOnCanvas} />
+            <View style={styles.pickerControls}>
+              <TextInput
+                value={pickerQuery}
+                onChangeText={setPickerQuery}
+                placeholder="이름, 브랜드, 계절, 색 검색"
+                placeholderTextColor={COLORS.textSecondary}
+                style={styles.searchInput}
+                returnKeyType="search"
+              />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.filterContent}
+              >
+                {CATEGORY_FILTERS.map((category) => {
+                  const selected = pickerCategory === category;
+
+                  return (
+                    <Pressable
+                      key={category}
+                      onPress={() => setPickerCategory(category)}
+                      style={[styles.categoryChip, selected && styles.categoryChipSelected]}
+                      hitSlop={8}
+                    >
+                      <Text style={[styles.categoryChipText, selected && styles.categoryChipTextSelected]}>
+                        {category}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
             {isLoading ? (
               <View style={styles.centerContent}>
                 <ActivityIndicator color={COLORS.primary} />
@@ -237,7 +330,7 @@ export function CodiBookScreen({
               </View>
             ) : (
               <FlatList
-                data={items}
+                data={pickerItems}
                 keyExtractor={(item) => String(item.id)}
                 numColumns={GRID_COLUMNS}
                 columnWrapperStyle={styles.gridRow}
@@ -252,26 +345,38 @@ export function CodiBookScreen({
                         styles.libraryTile,
                         {
                           width: tileSize,
-                          height: tileSize,
                         },
                         selected && styles.libraryTileSelected,
                       ]}
                       hitSlop={8}
                     >
-                      <Image source={{ uri: item.localImagePath }} style={styles.libraryImage} />
+                      <View style={styles.libraryImageFrame}>
+                        <Image source={{ uri: item.localImagePath }} style={styles.libraryImage} />
+                      </View>
+                      <Text style={styles.libraryText} numberOfLines={1}>
+                        {item.brand || item.name || item.category}
+                      </Text>
                       <View style={[styles.pickBadge, selected && styles.pickBadgeSelected]}>
-                        <Text style={styles.pickBadgeText}>{selected ? '선택' : '+'}</Text>
+                        <Text style={styles.pickBadgeText}>{selected ? '✓' : '+'}</Text>
                       </View>
                     </Pressable>
                   );
                 }}
               />
             )}
+
+            <SelectedBar
+              stickers={stickers}
+              onRemove={deleteSticker}
+              onArrange={() => setMode('canvas')}
+            />
           </View>
-        ) : (
+        ) : null}
+
+        {mode === 'canvas' ? (
           <View style={styles.screenBody}>
             <View style={styles.canvasActions}>
-              <Pressable onPress={() => setMode('library')} style={styles.secondaryButton} hitSlop={8}>
+              <Pressable onPress={() => setMode('picker')} style={styles.secondaryButton} hitSlop={8}>
                 <Text style={styles.secondaryButtonText}>옷 추가</Text>
               </Pressable>
               <Pressable
@@ -281,6 +386,23 @@ export function CodiBookScreen({
                 hitSlop={8}
               >
                 <Text style={styles.secondaryButtonText}>앞으로</Text>
+              </Pressable>
+              {editingOutfitId ? (
+                <Pressable onPress={confirmDeleteOutfit} style={styles.dangerButton} hitSlop={8}>
+                  <Text style={styles.dangerButtonText}>삭제</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={saveOutfit}
+                disabled={isSaving}
+                style={[styles.primaryButton, isSaving && styles.disabledButton]}
+                hitSlop={8}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color={COLORS.surface} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>저장</Text>
+                )}
               </Pressable>
             </View>
 
@@ -305,7 +427,7 @@ export function CodiBookScreen({
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyMascot}>🐢</Text>
                   <View style={styles.speechBubble}>
-                    <Text style={styles.emptyText}>옷 고르기에서 코디할 옷을 가져와봐북</Text>
+                    <Text style={styles.emptyText}>옷 추가에서 코디할 옷을 가져와봐북</Text>
                   </View>
                 </View>
               ) : null}
@@ -323,64 +445,105 @@ export function CodiBookScreen({
               ))}
             </View>
           </View>
-        )}
+        ) : null}
       </View>
     </SafeAreaView>
   );
 }
 
-type ModeButtonProps = {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
+type OutfitListProps = {
+  outfits: Outfit[];
+  bottomInset: number;
+  onSelect: (outfit: Outfit) => void;
+  onAdd: () => void;
 };
 
-function ModeButton({ label, selected, onPress }: ModeButtonProps) {
+function OutfitList({ outfits, bottomInset, onSelect, onAdd }: OutfitListProps) {
+  if (outfits.length === 0) {
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyMascot}>🐢</Text>
+        <View style={styles.speechBubble}>
+          <Text style={styles.emptyText}>아직 저장된 코디가 없어북</Text>
+        </View>
+        <Pressable onPress={onAdd} style={styles.primaryButton} hitSlop={8}>
+          <Text style={styles.primaryButtonText}>코디 추가</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
-    <Pressable onPress={onPress} style={[styles.modeButton, selected && styles.modeButtonSelected]} hitSlop={8}>
-      <Text style={[styles.modeButtonText, selected && styles.modeButtonTextSelected]}>{label}</Text>
-    </Pressable>
+    <FlatList
+      data={outfits}
+      keyExtractor={(outfit) => String(outfit.id)}
+      contentContainerStyle={[styles.outfitListContent, { paddingBottom: bottomInset + 24 }]}
+      renderItem={({ item }) => (
+        <Pressable onPress={() => onSelect(item)} style={styles.outfitCard} hitSlop={8}>
+          <View style={styles.outfitPreview}>
+            {item.stickers.slice(0, 6).map((sticker, index) => (
+              <Image
+                key={`${item.id}-${sticker.clothingItemId}-${index}`}
+                source={{ uri: sticker.localImagePath }}
+                style={[
+                  styles.outfitPreviewImage,
+                  {
+                    left: 16 + index * 28,
+                    top: 18 + index * 10,
+                    transform: [{ rotate: `${sticker.rotation * 0.2}deg` }],
+                  },
+                ]}
+              />
+            ))}
+          </View>
+          <View style={styles.outfitLabelRow}>
+            <Text style={styles.outfitName}>{item.name}</Text>
+            <Text style={styles.outfitMeta}>{item.stickers.length}개</Text>
+          </View>
+        </Pressable>
+      )}
+    />
   );
 }
 
-type SavedOutfitsProps = {
-  outfits: Outfit[];
-  onSelect: (outfit: Outfit) => void;
+type SelectedBarProps = {
+  stickers: OutfitSticker[];
+  onRemove: (id: string) => void;
+  onArrange: () => void;
 };
 
-function SavedOutfits({ outfits, onSelect }: SavedOutfitsProps) {
+function SelectedBar({ stickers, onRemove, onArrange }: SelectedBarProps) {
   return (
-    <View style={styles.savedBand}>
-      <Text style={styles.sectionTitle}>저장한 코디</Text>
-      {outfits.length === 0 ? (
-        <Text style={styles.emptyCaption}>아직 저장된 코디가 없어북</Text>
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedList}>
-          {outfits.map((outfit) => (
-            <Pressable key={outfit.id} onPress={() => onSelect(outfit)} style={styles.outfitCard} hitSlop={8}>
-              <View style={styles.outfitPreview}>
-                {outfit.stickers.slice(0, 3).map((sticker, index) => (
-                  <Image
-                    key={`${outfit.id}-${sticker.clothingItemId}-${index}`}
-                    source={{ uri: sticker.localImagePath }}
-                    style={[
-                      styles.outfitPreviewImage,
-                      {
-                        left: 8 + index * 18,
-                        top: 10 + index * 6,
-                        transform: [{ rotate: `${sticker.rotation * 0.25}deg` }],
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-              <Text style={styles.outfitName} numberOfLines={1}>
-                {outfit.name}
-              </Text>
+    <View style={styles.selectedBar}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.selectedList}
+      >
+        {stickers.length === 0 ? (
+          <Text style={styles.selectedEmptyText}>선택한 옷이 없어북</Text>
+        ) : (
+          stickers.map((sticker) => (
+            <Pressable
+              key={sticker.id}
+              onPress={() => onRemove(sticker.id)}
+              style={styles.selectedThumb}
+              hitSlop={8}
+            >
+              <Image source={{ uri: sticker.localImagePath }} style={styles.selectedThumbImage} />
+              <Text style={styles.selectedRemove}>×</Text>
             </Pressable>
-          ))}
-        </ScrollView>
-      )}
+          ))
+        )}
+      </ScrollView>
+      <Pressable
+        onPress={onArrange}
+        disabled={stickers.length === 0}
+        style={[styles.arrangeButton, stickers.length === 0 && styles.mutedButton]}
+        hitSlop={8}
+      >
+        <Text style={styles.arrangeButtonText}>배치</Text>
+      </Pressable>
     </View>
   );
 }
@@ -450,16 +613,6 @@ function CanvasSticker({
           pan.setValue(nextPosition);
           onChange(nextPosition);
         },
-        onPanResponderTerminate: (_, gesture) => {
-          isDragging.current = false;
-          const nextPosition = {
-            x: clamp(dragStart.current.x + gesture.dx, 0, Math.max(0, canvasSize.width - sticker.size)),
-            y: clamp(dragStart.current.y + gesture.dy, 0, Math.max(0, canvasSize.height - sticker.size)),
-          };
-
-          pan.setValue(nextPosition);
-          onChange(nextPosition);
-        },
       }),
     [canvasSize.height, canvasSize.width, onChange, onSelect, pan, sticker.size, sticker.x, sticker.y],
   );
@@ -493,27 +646,6 @@ function CanvasSticker({
           pan.setValue(nextPosition);
         },
         onPanResponderRelease: (_, gesture) => {
-          isResizing.current = false;
-          const nextSize = clamp(
-            resizeStart.current + Math.max(gesture.dx, gesture.dy),
-            MIN_STICKER_SIZE,
-            Math.max(MIN_STICKER_SIZE, Math.min(canvasSize.width || 240, canvasSize.height || 240)),
-          );
-          const nextPosition = clampStickerPosition(
-            resizePositionStart.current.x,
-            resizePositionStart.current.y,
-            nextSize,
-            canvasSize,
-          );
-
-          sizeAnim.setValue(nextSize);
-          pan.setValue(nextPosition);
-          onChange({
-            size: nextSize,
-            ...nextPosition,
-          });
-        },
-        onPanResponderTerminate: (_, gesture) => {
           isResizing.current = false;
           const nextSize = clamp(
             resizeStart.current + Math.max(gesture.dx, gesture.dy),
@@ -639,40 +771,6 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: COLORS.textSecondary,
   },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  segmentedControl: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    minHeight: 48,
-    padding: 4,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    flexDirection: 'row',
-    gap: 4,
-  },
-  modeButton: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modeButtonSelected: {
-    backgroundColor: COLORS.secondary,
-  },
-  modeButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-  },
-  modeButtonTextSelected: {
-    color: COLORS.primary,
-  },
   screenBody: {
     flex: 1,
   },
@@ -689,9 +787,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.surface,
   },
+  primarySquareButton: {
+    width: 48,
+    minHeight: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  primarySquareButtonText: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: COLORS.surface,
+  },
   secondaryButton: {
     minHeight: 44,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -704,61 +815,108 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.primary,
   },
+  dangerButton: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.danger,
+  },
+  dangerButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.surface,
+  },
   disabledButton: {
     backgroundColor: COLORS.primaryLight,
   },
   mutedButton: {
     opacity: 0.45,
   },
-  savedBand: {
-    minHeight: 104,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-  },
-  emptyCaption: {
-    marginTop: 8,
-    fontSize: 12,
-    fontWeight: '400',
-    color: COLORS.textSecondary,
-  },
-  savedList: {
-    paddingTop: 8,
-    gap: 8,
+  outfitListContent: {
+    padding: 16,
+    gap: 12,
   },
   outfitCard: {
-    width: 88,
-    minHeight: 76,
+    overflow: 'hidden',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
+    backgroundColor: COLORS.surface,
   },
   outfitPreview: {
-    height: 52,
+    height: 172,
     backgroundColor: COLORS.canvasBg,
   },
   outfitPreviewImage: {
     position: 'absolute',
-    width: 36,
-    height: 36,
+    width: 104,
+    height: 104,
     resizeMode: 'contain',
   },
+  outfitLabelRow: {
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   outfitName: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 12,
-    fontWeight: '600',
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+  outfitMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  pickerControls: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  searchInput: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    fontSize: 14,
+    fontWeight: '400',
+    color: COLORS.textPrimary,
+  },
+  filterContent: {
+    paddingVertical: 4,
+    gap: 6,
+  },
+  categoryChip: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryChipSelected: {
+    backgroundColor: COLORS.secondary,
+    borderColor: COLORS.primaryLight,
+  },
+  categoryChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  categoryChipTextSelected: {
+    color: COLORS.primary,
   },
   centerContent: {
     flex: 1,
@@ -767,8 +925,8 @@ const styles = StyleSheet.create({
   },
   gridContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingTop: 8,
+    paddingBottom: 112,
   },
   gridRow: {
     gap: 8,
@@ -785,19 +943,33 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
     borderWidth: 2,
   },
+  libraryImageFrame: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: COLORS.surface,
+  },
   libraryImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
+    resizeMode: 'contain',
+  },
+  libraryText: {
+    minHeight: 34,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
   pickBadge: {
     position: 'absolute',
     right: 8,
     top: 8,
-    minWidth: 44,
+    minWidth: 32,
     minHeight: 32,
-    paddingHorizontal: 8,
-    borderRadius: 20,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
@@ -806,7 +978,73 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
   },
   pickBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.surface,
+  },
+  selectedBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
+    minHeight: 72,
+    padding: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  selectedList: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  selectedEmptyText: {
+    paddingHorizontal: 8,
     fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  selectedThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
+  },
+  selectedThumbImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+  },
+  selectedRemove: {
+    position: 'absolute',
+    right: -6,
+    top: -8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    overflow: 'hidden',
+    textAlign: 'center',
+    lineHeight: 22,
+    backgroundColor: COLORS.danger,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.surface,
+  },
+  arrangeButton: {
+    minWidth: 64,
+    minHeight: 52,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  arrangeButtonText: {
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.surface,
   },
@@ -814,6 +1052,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     gap: 8,
   },

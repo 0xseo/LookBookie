@@ -7,6 +7,13 @@ const MAX_IMAGE_WIDTH = 1400;
 
 export type CropMode = 'original' | 'square' | 'portrait45' | 'portrait34';
 
+export type CropRect = {
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+};
+
 export type ProcessedWardrobeImage = {
   uri: string;
   width: number;
@@ -81,6 +88,33 @@ export async function cropWardrobeImage(sourceUri: string, mode: CropMode) {
   };
 }
 
+export async function cropWardrobeImageToRect(sourceUri: string, rect: CropRect) {
+  const probe = await ImageManipulator.manipulate(sourceUri).renderAsync();
+  const safeRect = {
+    originX: clamp(Math.floor(rect.originX), 0, Math.max(0, probe.width - 1)),
+    originY: clamp(Math.floor(rect.originY), 0, Math.max(0, probe.height - 1)),
+    width: clamp(Math.floor(rect.width), 1, probe.width),
+    height: clamp(Math.floor(rect.height), 1, probe.height),
+  };
+
+  safeRect.width = Math.min(safeRect.width, probe.width - safeRect.originX);
+  safeRect.height = Math.min(safeRect.height, probe.height - safeRect.originY);
+
+  const context = ImageManipulator.manipulate(sourceUri).crop(safeRect);
+  const renderedImage = await context.renderAsync();
+  const result = await renderedImage.saveAsync({
+    format: SaveFormat.PNG,
+    compress: 1,
+  });
+
+  return {
+    uri: result.uri,
+    width: result.width,
+    height: result.height,
+    backgroundRemoved: false,
+  };
+}
+
 export async function saveWardrobeImage(sourceUri: string) {
   const imageDirectory = new Directory(Paths.document, WARDROBE_IMAGE_DIRECTORY);
   imageDirectory.create({ idempotent: true, intermediates: true });
@@ -136,4 +170,8 @@ function getContentType(extension: string) {
   }
 
   return 'image/png';
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }

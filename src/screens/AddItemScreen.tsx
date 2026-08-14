@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useState,
 } from 'react';
 import {
@@ -25,19 +24,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
+import { ColorPalettePicker } from '../components/ColorPalettePicker';
 import { ImageCropScreen } from './ImageCropScreen';
 import { ImageEraserScreen } from './ImageEraserScreen';
 import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage';
 import { insertClothingItem } from '../storage/database';
-import { loadCustomColorOptions, saveCustomColorOptions } from '../storage/colorPalette';
 import { syncClothingItemToCloud } from '../services/wardrobeCloud';
 import {
   CLOTHING_CATEGORIES,
-  COLOR_OPTIONS,
   SEASONS,
   type ClothingCategory,
   type ClothingColor,
-  type ColorOption,
   type Season,
 } from '../types/clothing';
 
@@ -60,36 +57,17 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     const [category, setCategory] = useState<ClothingCategory>('상의');
     const [seasons, setSeasons] = useState<Season[]>([]);
     const [color, setColor] = useState<ClothingColor>('블랙');
-    const [customColorOptions, setCustomColorOptions] = useState<ColorOption[]>([]);
-    const [customColorLabel, setCustomColorLabel] = useState('');
-    const [customColorValue, setCustomColorValue] = useState('#');
     const [processingMessage, setProcessingMessage] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isCropVisible, setIsCropVisible] = useState(false);
     const [isEraserVisible, setIsEraserVisible] = useState(false);
 
-    const colorOptions = useMemo(
-      () => mergeColorOptions([...COLOR_OPTIONS, ...customColorOptions]),
-      [customColorOptions],
-    );
-    const normalizedCustomColorValue = customColorValue.toUpperCase();
-    const canAddCustomColor = /^#[0-9A-F]{6}$/.test(normalizedCustomColorValue);
     const hasDraft =
       Boolean(imageUri || cropSourceUri || eraserSourceUri || brand.trim()) ||
       name.trim().length > 0 ||
       seasons.length > 0 ||
       category !== '상의' ||
-      color !== '블랙' ||
-      customColorLabel.trim().length > 0 ||
-      customColorValue !== '#';
-
-    useEffect(() => {
-      async function loadPalette() {
-        setCustomColorOptions(await loadCustomColorOptions());
-      }
-
-      loadPalette();
-    }, []);
+      color !== '블랙';
 
     const requestCancel = useCallback(() => {
       if (isSaving) {
@@ -205,39 +183,6 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
           ? current.filter((currentSeason) => currentSeason !== season)
           : [...current, season],
       );
-    };
-
-    const addCustomColorOption = async () => {
-      const label = customColorLabel.trim() || normalizedCustomColorValue;
-      const nextOption = {
-        label,
-        value: normalizedCustomColorValue,
-      };
-
-      if (!canAddCustomColor) {
-        Alert.alert('색상값을 확인해북', '#RRGGBB 형식으로 입력해 주세요.');
-        return;
-      }
-
-      if (colorOptions.some((option) => option.label === label)) {
-        Alert.alert('이미 있는 색상이어북', '다른 이름으로 추가해 주세요.');
-        return;
-      }
-
-      const nextCustomOptions = [...customColorOptions, nextOption];
-
-      try {
-        await saveCustomColorOptions(nextCustomOptions);
-        setCustomColorOptions(nextCustomOptions);
-        setColor(label);
-        setCustomColorLabel('');
-        setCustomColorValue('#');
-      } catch (error) {
-        Alert.alert(
-          '색상 추가에 실패했어북',
-          error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
-        );
-      }
     };
 
     const saveItem = async () => {
@@ -384,78 +329,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>대표색</Text>
-              <View style={styles.chipWrap}>
-                {colorOptions.map((option) => (
-                  <Pressable
-                    key={`${option.label}-${option.value}`}
-                    onPress={() => setColor(option.label)}
-                    style={[styles.colorChip, color === option.label && styles.choiceChipSelected]}
-                    hitSlop={8}
-                  >
-                    <View
-                      style={[
-                        styles.colorSwatch,
-                        {
-                          backgroundColor: option.value,
-                          borderColor: option.value === '#FFFFFF' ? COLORS.border : option.value,
-                        },
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.choiceChipText,
-                        color === option.label && styles.choiceChipTextSelected,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              <View style={styles.customColorPanel}>
-                <Text style={styles.smallLabel}>내 색 추가</Text>
-                <View style={styles.customColorInputs}>
-                  <TextInput
-                    value={customColorLabel}
-                    onChangeText={setCustomColorLabel}
-                    placeholder="색 이름"
-                    placeholderTextColor={COLORS.textSecondary}
-                    style={[styles.input, styles.colorNameInput]}
-                    returnKeyType="done"
-                  />
-                  <View style={styles.hexInput}>
-                    <View
-                      style={[
-                        styles.colorSwatch,
-                        {
-                          backgroundColor: canAddCustomColor
-                            ? normalizedCustomColorValue
-                            : COLORS.surface,
-                        },
-                      ]}
-                    />
-                    <TextInput
-                      value={customColorValue}
-                      onChangeText={(value) => setCustomColorValue(formatHexInput(value))}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      placeholder="#AABBCC"
-                      placeholderTextColor={COLORS.textSecondary}
-                      style={styles.hexTextInput}
-                      returnKeyType="done"
-                    />
-                  </View>
-                </View>
-                <Pressable
-                  onPress={addCustomColorOption}
-                  disabled={!canAddCustomColor}
-                  style={[styles.addColorButton, !canAddCustomColor && styles.mutedButton]}
-                  hitSlop={8}
-                >
-                  <Text style={styles.addColorButtonText}>팔레트에 추가</Text>
-                </Pressable>
-              </View>
+              <ColorPalettePicker selectedColor={color} onSelectColor={setColor} />
             </View>
 
             <Pressable
@@ -525,25 +399,6 @@ function ChoiceChip({ label, selected, onPress }: ChoiceChipProps) {
       </Text>
     </Pressable>
   );
-}
-
-function mergeColorOptions(options: readonly ColorOption[]) {
-  const seenLabels = new Set<string>();
-
-  return options.filter((option) => {
-    if (seenLabels.has(option.label)) {
-      return false;
-    }
-
-    seenLabels.add(option.label);
-    return true;
-  });
-}
-
-function formatHexInput(value: string) {
-  const hexDigits = value.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6).toUpperCase();
-
-  return hexDigits ? `#${hexDigits}` : '#';
 }
 
 const styles = StyleSheet.create({
@@ -670,11 +525,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
-  smallLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-  },
   input: {
     minHeight: 48,
     paddingHorizontal: 16,
@@ -711,75 +561,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   choiceChipTextSelected: {
-    color: COLORS.primary,
-  },
-  colorChip: {
-    minHeight: 44,
-    paddingLeft: 8,
-    paddingRight: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  colorSwatch: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  customColorPanel: {
-    marginTop: 8,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    gap: 8,
-  },
-  customColorInputs: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  colorNameInput: {
-    flexGrow: 1,
-    flexBasis: 132,
-  },
-  hexInput: {
-    minHeight: 48,
-    flexGrow: 1,
-    flexBasis: 132,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  hexTextInput: {
-    flex: 1,
-    minHeight: 44,
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  addColorButton: {
-    minHeight: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.secondary,
-  },
-  addColorButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
     color: COLORS.primary,
   },
   bottomSaveButton: {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,20 +17,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
+import { ColorPalettePicker } from '../components/ColorPalettePicker';
 import { ImageCropScreen } from './ImageCropScreen';
 import { ImageEraserScreen } from './ImageEraserScreen';
-import { loadCustomColorOptions, saveCustomColorOptions } from '../storage/colorPalette';
-import { updateClothingItem } from '../storage/database';
+import { deleteClothingItem, updateClothingItem } from '../storage/database';
 import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage';
-import { syncClothingItemUpdateToCloud } from '../services/wardrobeCloud';
+import {
+  deleteClothingItemFromCloud,
+  syncClothingItemUpdateToCloud,
+} from '../services/wardrobeCloud';
 import {
   CLOTHING_CATEGORIES,
-  COLOR_OPTIONS,
   SEASONS,
   type ClothingCategory,
   type ClothingColor,
   type ClothingItem,
-  type ColorOption,
   type Season,
 } from '../types/clothing';
 
@@ -38,9 +39,15 @@ type ClothingDetailScreenProps = {
   item: ClothingItem;
   onClose: () => void;
   onSaved: () => void;
+  onDeleted: () => void;
 };
 
-export function ClothingDetailScreen({ item, onClose, onSaved }: ClothingDetailScreenProps) {
+export function ClothingDetailScreen({
+  item,
+  onClose,
+  onSaved,
+  onDeleted,
+}: ClothingDetailScreenProps) {
   const [imageUri, setImageUri] = useState(item.localImagePath);
   const [imageChanged, setImageChanged] = useState(false);
   const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
@@ -50,40 +57,21 @@ export function ClothingDetailScreen({ item, onClose, onSaved }: ClothingDetailS
   const [category, setCategory] = useState<ClothingCategory>(item.category);
   const [seasons, setSeasons] = useState<Season[]>(item.seasons);
   const [color, setColor] = useState<ClothingColor>(item.color);
-  const [customColorOptions, setCustomColorOptions] = useState<ColorOption[]>([]);
-  const [customColorLabel, setCustomColorLabel] = useState('');
-  const [customColorValue, setCustomColorValue] = useState('#');
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isCropVisible, setIsCropVisible] = useState(false);
   const [isEraserVisible, setIsEraserVisible] = useState(false);
-
-  const colorOptions = useMemo(
-    () => mergeColorOptions([...COLOR_OPTIONS, ...customColorOptions]),
-    [customColorOptions],
-  );
-  const normalizedCustomColorValue = customColorValue.toUpperCase();
-  const canAddCustomColor = /^#[0-9A-F]{6}$/.test(normalizedCustomColorValue);
   const hasDraft =
     imageUri !== item.localImagePath ||
     name !== item.name ||
     brand !== item.brand ||
     category !== item.category ||
     color !== item.color ||
-    seasons.join('|') !== item.seasons.join('|') ||
-    customColorLabel.trim().length > 0 ||
-    customColorValue !== '#';
-
-  useEffect(() => {
-    async function loadPalette() {
-      setCustomColorOptions(await loadCustomColorOptions());
-    }
-
-    loadPalette();
-  }, []);
+    seasons.join('|') !== item.seasons.join('|');
 
   const requestClose = useCallback(() => {
-    if (isSaving) {
+    if (isSaving || isDeleting) {
       return;
     }
 
@@ -96,7 +84,7 @@ export function ClothingDetailScreen({ item, onClose, onSaved }: ClothingDetailS
       { text: '계속 수정', style: 'cancel' },
       { text: '나가기', style: 'destructive', onPress: onClose },
     ]);
-  }, [hasDraft, isSaving, onClose]);
+  }, [hasDraft, isDeleting, isSaving, onClose]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -146,44 +134,13 @@ export function ClothingDetailScreen({ item, onClose, onSaved }: ClothingDetailS
     );
   };
 
-  const addCustomColorOption = async () => {
-    const label = customColorLabel.trim() || normalizedCustomColorValue;
-    const nextOption = {
-      label,
-      value: normalizedCustomColorValue,
-    };
-
-    if (!canAddCustomColor) {
-      Alert.alert('색상값을 확인해북', '#RRGGBB 형식으로 입력해 주세요.');
-      return;
-    }
-
-    if (colorOptions.some((option) => option.label === label)) {
-      Alert.alert('이미 있는 색상이어북', '다른 이름으로 추가해 주세요.');
-      return;
-    }
-
-    const nextCustomOptions = [...customColorOptions, nextOption];
-
-    try {
-      await saveCustomColorOptions(nextCustomOptions);
-      setCustomColorOptions(nextCustomOptions);
-      setColor(label);
-      setCustomColorLabel('');
-      setCustomColorValue('#');
-    } catch (error) {
-      Alert.alert(
-        '색상 추가에 실패했어북',
-        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
-      );
-    }
-  };
-
-  const saveChanges = async () => {
+  const saveChanges = async (options?: { retrySyncOnly?: boolean }) => {
     setIsSaving(true);
 
     try {
-      setProcessingMessage('옷 정보를 저장하고 있어북...');
+      setProcessingMessage(
+        options?.retrySyncOnly ? '클라우드 동기화를 다시 시도하고 있어북...' : '옷 정보를 저장하고 있어북...',
+      );
       const nextLocalImagePath = imageChanged
         ? await saveProcessedImage(imageUri)
         : item.localImagePath;
@@ -222,6 +179,34 @@ export function ClothingDetailScreen({ item, onClose, onSaved }: ClothingDetailS
     }
   };
 
+  const confirmDelete = () => {
+    Alert.alert('이 옷을 삭제할까북?', '옷장에서 삭제하면 목록에서 사라져요.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: deleteItem,
+      },
+    ]);
+  };
+
+  const deleteItem = async () => {
+    setIsDeleting(true);
+
+    try {
+      await deleteClothingItemFromCloud(item);
+      await deleteClothingItem(item.id);
+      onDeleted();
+    } catch (error) {
+      Alert.alert(
+        '삭제에 실패했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -234,8 +219,8 @@ export function ClothingDetailScreen({ item, onClose, onSaved }: ClothingDetailS
           </Pressable>
           <Text style={styles.title}>옷 상세</Text>
           <Pressable
-            onPress={saveChanges}
-            disabled={isSaving}
+            onPress={() => saveChanges()}
+            disabled={isSaving || isDeleting}
             style={[styles.saveButton, isSaving && styles.disabledButton]}
             hitSlop={8}
           >
@@ -255,6 +240,17 @@ export function ClothingDetailScreen({ item, onClose, onSaved }: ClothingDetailS
           <Pressable onPress={startImagePipeline} style={styles.editImageButton} hitSlop={8}>
             <Text style={styles.editImageButtonText}>사진 편집</Text>
           </Pressable>
+
+          {item.cloudSyncStatus === 'failed' || item.cloudSyncStatus === 'pending' ? (
+            <Pressable
+              onPress={() => saveChanges({ retrySyncOnly: true })}
+              disabled={isSaving || isDeleting}
+              style={styles.retryButton}
+              hitSlop={8}
+            >
+              <Text style={styles.retryButtonText}>동기화 재시도</Text>
+            </Pressable>
+          ) : null}
 
           {processingMessage ? (
             <Text style={styles.processingText}>{processingMessage}</Text>
@@ -314,79 +310,17 @@ export function ClothingDetailScreen({ item, onClose, onSaved }: ClothingDetailS
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>대표색</Text>
-            <View style={styles.chipWrap}>
-              {colorOptions.map((option) => (
-                <Pressable
-                  key={`${option.label}-${option.value}`}
-                  onPress={() => setColor(option.label)}
-                  style={[styles.colorChip, color === option.label && styles.choiceChipSelected]}
-                  hitSlop={8}
-                >
-                  <View
-                    style={[
-                      styles.colorSwatch,
-                      {
-                        backgroundColor: option.value,
-                        borderColor: option.value === '#FFFFFF' ? COLORS.border : option.value,
-                      },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.choiceChipText,
-                      color === option.label && styles.choiceChipTextSelected,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={styles.customColorPanel}>
-              <Text style={styles.smallLabel}>내 색 추가</Text>
-              <View style={styles.customColorInputs}>
-                <TextInput
-                  value={customColorLabel}
-                  onChangeText={setCustomColorLabel}
-                  placeholder="색 이름"
-                  placeholderTextColor={COLORS.textSecondary}
-                  style={[styles.input, styles.colorNameInput]}
-                  returnKeyType="done"
-                />
-                <View style={styles.hexInput}>
-                  <View
-                    style={[
-                      styles.colorSwatch,
-                      {
-                        backgroundColor: canAddCustomColor
-                          ? normalizedCustomColorValue
-                          : COLORS.surface,
-                      },
-                    ]}
-                  />
-                  <TextInput
-                    value={customColorValue}
-                    onChangeText={(value) => setCustomColorValue(formatHexInput(value))}
-                    autoCapitalize="characters"
-                    autoCorrect={false}
-                    placeholder="#AABBCC"
-                    placeholderTextColor={COLORS.textSecondary}
-                    style={styles.hexTextInput}
-                    returnKeyType="done"
-                  />
-                </View>
-              </View>
-              <Pressable
-                onPress={addCustomColorOption}
-                disabled={!canAddCustomColor}
-                style={[styles.addColorButton, !canAddCustomColor && styles.mutedButton]}
-                hitSlop={8}
-              >
-                <Text style={styles.addColorButtonText}>팔레트에 추가</Text>
-              </Pressable>
-            </View>
+            <ColorPalettePicker selectedColor={color} onSelectColor={setColor} />
           </View>
+
+          <Pressable
+            onPress={confirmDelete}
+            disabled={isSaving || isDeleting}
+            style={[styles.deleteButton, isDeleting && styles.disabledButton]}
+            hitSlop={8}
+          >
+            <Text style={styles.deleteButtonText}>{isDeleting ? '삭제 중' : '옷 삭제'}</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -443,25 +377,6 @@ function ChoiceChip({ label, selected, onPress }: ChoiceChipProps) {
       </Text>
     </Pressable>
   );
-}
-
-function mergeColorOptions(options: readonly ColorOption[]) {
-  const seenLabels = new Set<string>();
-
-  return options.filter((option) => {
-    if (seenLabels.has(option.label)) {
-      return false;
-    }
-
-    seenLabels.add(option.label);
-    return true;
-  });
-}
-
-function formatHexInput(value: string) {
-  const hexDigits = value.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6).toUpperCase();
-
-  return hexDigits ? `#${hexDigits}` : '#';
 }
 
 const styles = StyleSheet.create({
@@ -549,6 +464,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.primary,
   },
+  retryButton: {
+    minHeight: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.secondary,
+  },
+  retryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
   processingText: {
     fontSize: 12,
     fontWeight: '400',
@@ -561,11 +488,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.textPrimary,
-  },
-  smallLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
   },
   input: {
     minHeight: 48,
@@ -605,74 +527,17 @@ const styles = StyleSheet.create({
   choiceChipTextSelected: {
     color: COLORS.primary,
   },
-  colorChip: {
-    minHeight: 44,
-    paddingLeft: 8,
-    paddingRight: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  colorSwatch: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  customColorPanel: {
-    marginTop: 8,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    gap: 8,
-  },
-  customColorInputs: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  colorNameInput: {
-    flexGrow: 1,
-    flexBasis: 132,
-  },
-  hexInput: {
-    minHeight: 48,
-    flexGrow: 1,
-    flexBasis: 132,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  hexTextInput: {
-    flex: 1,
-    minHeight: 44,
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  addColorButton: {
-    minHeight: 44,
+  deleteButton: {
+    minHeight: 52,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.secondary,
+    backgroundColor: COLORS.danger,
   },
-  addColorButtonText: {
-    fontSize: 14,
+  deleteButtonText: {
+    fontSize: 16,
     fontWeight: '700',
-    color: COLORS.primary,
+    color: COLORS.surface,
   },
   mutedButton: {
     opacity: 0.45,

@@ -24,3 +24,7 @@
 [2026-08-14] | [UX Fix] | Reworked wardrobe grid cards to contain images without cropping and show the brand below the image | Keep clothing photos visible and avoid overlay text covering items
 [2026-08-14] | [Phase 2] | Improved codi sticker resizing with animated draft size updates and moved eraser brush-size preview onto the image canvas with larger brush range and icon controls | Make canvas editing and background erasing feel more direct
 [2026-08-14] | [Phase 4] | Added a dedicated Friends tab, friend wardrobe/outfit views, cloud outfit sync on save, and Supabase policies for friend outfit reads | Move friend workflows out of MyPage and enable friend codi browsing
+[2026-08-14] | [Phase 2] | Rebuilt crop screen with drag-to-position and zoom controls plus pixel-rect cropping | Let users choose the exact image area before background erasing
+[2026-08-14] | [Phase 2] | Added transparent-pixel trimming when exporting erased images | Resize edited clothing images around the remaining non-transparent subject
+[2026-08-14] | [UX Fix] | Added editable/deletable custom color palette UI, wardrobe search, cloud icon badges, clothing delete, and sync retry controls | Improve wardrobe management after initial item registration
+[2026-08-14] | [Phase 2] | Reworked CodiBook to open on saved outfits and use a separate searchable/category-filtered item picker with selected-item tray | Make outfit viewing primary and defer wardrobe importing until adding/editing a codi

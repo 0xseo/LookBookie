@@ -208,6 +208,12 @@ function AppContent() {
     await loadCloudPendingCount();
   };
 
+  const handleItemDeleted = async () => {
+    setSelectedWardrobeItem(null);
+    await loadItems();
+    await loadCloudPendingCount();
+  };
+
   const handleOutfitSaved = async () => {
     await loadOutfitCount();
   };
@@ -484,6 +490,7 @@ function AppContent() {
             item={selectedWardrobeItem}
             onClose={() => setSelectedWardrobeItem(null)}
             onSaved={handleItemUpdated}
+            onDeleted={handleItemDeleted}
           />
         ) : null}
       </Modal>

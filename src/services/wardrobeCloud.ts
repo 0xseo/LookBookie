@@ -208,6 +208,31 @@ export async function syncClothingItemUpdateToCloud(
   }
 }
 
+export async function deleteClothingItemFromCloud(item: ClothingItem) {
+  if (!isSupabaseConfigured || !supabase || !item.remoteRecordId) {
+    return;
+  }
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    throw sessionError;
+  }
+
+  if (!session?.user) {
+    return;
+  }
+
+  const { error } = await supabase.from('clothes').delete().eq('id', item.remoteRecordId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 async function uploadClothingImage(userId: string, localImagePath: string) {
   if (!supabase) {
     throw new Error('Supabase client is not configured.');

@@ -461,11 +461,61 @@ function buildEditorHtml(imageDataUrl: string) {
 
     window.exportCanvas = function() {
       try {
-        post({ type: 'export', dataUrl: canvas.toDataURL('image/png') });
+        post({ type: 'export', dataUrl: trimTransparentCanvas().toDataURL('image/png') });
       } catch (error) {
         post({ type: 'error', message: error.message || 'export failed' });
       }
     };
+
+    function trimTransparentCanvas() {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
+      let minX = canvas.width;
+      let minY = canvas.height;
+      let maxX = -1;
+      let maxY = -1;
+
+      for (let y = 0; y < canvas.height; y += 1) {
+        for (let x = 0; x < canvas.width; x += 1) {
+          const alpha = pixels[(y * canvas.width + x) * 4 + 3];
+
+          if (alpha > 8) {
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        }
+      }
+
+      if (maxX < minX || maxY < minY) {
+        return canvas;
+      }
+
+      const padding = 8;
+      minX = Math.max(0, minX - padding);
+      minY = Math.max(0, minY - padding);
+      maxX = Math.min(canvas.width - 1, maxX + padding);
+      maxY = Math.min(canvas.height - 1, maxY + padding);
+
+      const trimmedCanvas = document.createElement('canvas');
+      trimmedCanvas.width = maxX - minX + 1;
+      trimmedCanvas.height = maxY - minY + 1;
+      const trimmedContext = trimmedCanvas.getContext('2d');
+      trimmedContext.drawImage(
+        canvas,
+        minX,
+        minY,
+        trimmedCanvas.width,
+        trimmedCanvas.height,
+        0,
+        0,
+        trimmedCanvas.width,
+        trimmedCanvas.height
+      );
+
+      return trimmedCanvas;
+    }
 
     image.onload = function() {
       const maxSide = 1600;

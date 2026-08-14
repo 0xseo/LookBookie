@@ -152,6 +152,12 @@ export async function updateClothingItem(item: ClothingItem) {
   );
 }
 
+export async function deleteClothingItem(id: number) {
+  const db = await getDatabase();
+
+  await db.runAsync('DELETE FROM clothes WHERE id = ?', id);
+}
+
 export async function listClothingItems(filter: CategoryFilter) {
   const db = await getDatabase();
 
@@ -176,6 +182,23 @@ export async function insertOutfit(outfit: NewOutfit) {
     outfit.name,
     JSON.stringify(outfit.stickers),
   );
+}
+
+export async function updateOutfit(outfit: Outfit) {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    'UPDATE outfits SET name = ?, stickers = ? WHERE id = ?',
+    outfit.name,
+    JSON.stringify(outfit.stickers),
+    outfit.id,
+  );
+}
+
+export async function deleteOutfit(id: number) {
+  const db = await getDatabase();
+
+  await db.runAsync('DELETE FROM outfits WHERE id = ?', id);
 }
 
 export async function listOutfits() {
