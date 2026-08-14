@@ -16,3 +16,7 @@
 [2026-08-14] | [UX Fix] | Changed image picker to select full images, added in-app crop modes, expanded representative color palette, and fixed unauthenticated sync status to pending | Reduce registration friction and avoid misleading failed cloud tags before login
 [2026-08-14] | [Phase 2] | Added separate WebView canvas eraser editor with visible brush preview and transparent PNG export | Make background erasing a real manual alpha-editing step instead of a placeholder control
 [2026-08-14] | [Phase 2] | Split CodiBook into library selection and canvas arrangement modes | Make outfit composition easier by separating item picking from drag/resize/rotate editing
+[2026-08-14] | [Phase 2] | Rebuilt clothing registration into gallery/camera selection, separate crop screen, eraser screen, and metadata form flow | Reduce image-picking friction and keep compression automatic at final save
+[2026-08-14] | [Phase 2] | Added eraser stroke history with Undo/Redo and stopped brush-size changes from reloading the canvas | Preserve manual transparent-background edits while adjusting brush size
+[2026-08-14] | [UX Fix] | Switched CodiBook sticker dragging to Animated position updates with final state commit on release | Make canvas item movement track the finger more naturally
+[2026-08-14] | [UX Fix] | Added One-piece category, persistent custom color palette tags, compact wardrobe category chips, and cancel confirmation for in-progress item registration | Match updated wardrobe metadata and navigation UX requirements

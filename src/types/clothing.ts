@@ -1,8 +1,13 @@
 import type { CloudSyncStatus } from './sync';
 
-export const CLOTHING_CATEGORIES = ['상의', '하의', '아우터', '신발', '악세사리'] as const;
+export const CLOTHING_CATEGORIES = ['상의', '하의', '아우터', '신발', '악세사리', '원피스'] as const;
 export const CATEGORY_FILTERS = ['전체', ...CLOTHING_CATEGORIES] as const;
 export const SEASONS = ['봄', '여름', '가을', '겨울'] as const;
+
+export type ColorOption = {
+  label: string;
+  value: string;
+};
 
 export const COLOR_OPTIONS = [
   { label: '블랙', value: '#1A1D1E' },
@@ -19,12 +24,12 @@ export const COLOR_OPTIONS = [
   { label: '옐로우', value: '#F2C94C' },
   { label: '핑크', value: '#E8A2B8' },
   { label: '퍼플', value: '#7C5C99' },
-] as const;
+] as const satisfies readonly ColorOption[];
 
-export type ClothingCategory = (typeof CLOTHING_CATEGORIES)[number];
-export type CategoryFilter = (typeof CATEGORY_FILTERS)[number];
+export type ClothingCategory = (typeof CLOTHING_CATEGORIES)[number] | (string & {});
+export type CategoryFilter = '전체' | ClothingCategory;
 export type Season = (typeof SEASONS)[number];
-export type ClothingColor = (typeof COLOR_OPTIONS)[number]['label'];
+export type ClothingColor = string;
 
 export type ClothingItem = {
   id: number;

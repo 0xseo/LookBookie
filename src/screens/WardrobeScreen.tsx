@@ -61,6 +61,7 @@ export function WardrobeScreen({
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
           contentContainerStyle={styles.filterContent}
         >
           {CATEGORY_FILTERS.map((category) => {
@@ -224,13 +225,16 @@ const styles = StyleSheet.create({
   },
   filterContent: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
+    paddingVertical: 4,
+    gap: 6,
+  },
+  filterScroll: {
+    maxHeight: 46,
   },
   categoryChip: {
-    minHeight: 44,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
@@ -242,7 +246,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primaryLight,
   },
   categoryChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.textSecondary,
   },

@@ -40,7 +40,12 @@ export async function cropWardrobeImage(sourceUri: string, mode: CropMode) {
   const probe = await ImageManipulator.manipulate(sourceUri).renderAsync();
 
   if (mode === 'original') {
-    return processWardrobeImage(sourceUri);
+    return {
+      uri: sourceUri,
+      width: probe.width,
+      height: probe.height,
+      backgroundRemoved: false,
+    };
   }
 
   const targetRatio = mode === 'square' ? 1 : mode === 'portrait45' ? 4 / 5 : 3 / 4;
@@ -65,7 +70,7 @@ export async function cropWardrobeImage(sourceUri: string, mode: CropMode) {
   const renderedImage = await context.renderAsync();
   const result = await renderedImage.saveAsync({
     format: SaveFormat.PNG,
-    compress: 0.86,
+    compress: 1,
   });
 
   return {

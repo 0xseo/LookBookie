@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Image,
   PanResponder,
@@ -271,8 +272,7 @@ export function CodiBookScreen({
               </Pressable>
             </View>
 
-            <Pressable
-              onPress={() => setSelectedStickerId(null)}
+            <View
               style={styles.canvas}
               onLayout={(event) => {
                 setCanvasSize({
@@ -281,6 +281,14 @@ export function CodiBookScreen({
                 });
               }}
             >
+              {stickers.length > 0 ? (
+                <Pressable
+                  onPress={() => setSelectedStickerId(null)}
+                  style={StyleSheet.absoluteFill}
+                  hitSlop={8}
+                />
+              ) : null}
+
               {stickers.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyMascot}>🐢</Text>
@@ -301,7 +309,7 @@ export function CodiBookScreen({
                   onDelete={() => deleteSticker(sticker.id)}
                 />
               ))}
-            </Pressable>
+            </View>
           </View>
         )}
       </View>
@@ -382,9 +390,17 @@ function CanvasSticker({
   onChange,
   onDelete,
 }: CanvasStickerProps) {
+  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
+  const isDragging = useRef(false);
   const dragStart = useRef({ x: sticker.x, y: sticker.y });
   const resizeStart = useRef(sticker.size);
   const rotateStart = useRef(sticker.rotation);
+
+  useEffect(() => {
+    if (!isDragging.current) {
+      pan.setValue({ x: sticker.x, y: sticker.y });
+    }
+  }, [pan, sticker.x, sticker.y]);
 
   const dragResponder = useMemo(
     () =>
@@ -394,16 +410,37 @@ function CanvasSticker({
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
           onSelect();
+          isDragging.current = true;
           dragStart.current = { x: sticker.x, y: sticker.y };
         },
         onPanResponderMove: (_, gesture) => {
-          onChange({
+          pan.setValue({
             x: clamp(dragStart.current.x + gesture.dx, 0, Math.max(0, canvasSize.width - sticker.size)),
             y: clamp(dragStart.current.y + gesture.dy, 0, Math.max(0, canvasSize.height - sticker.size)),
           });
         },
+        onPanResponderRelease: (_, gesture) => {
+          isDragging.current = false;
+          const nextPosition = {
+            x: clamp(dragStart.current.x + gesture.dx, 0, Math.max(0, canvasSize.width - sticker.size)),
+            y: clamp(dragStart.current.y + gesture.dy, 0, Math.max(0, canvasSize.height - sticker.size)),
+          };
+
+          pan.setValue(nextPosition);
+          onChange(nextPosition);
+        },
+        onPanResponderTerminate: (_, gesture) => {
+          isDragging.current = false;
+          const nextPosition = {
+            x: clamp(dragStart.current.x + gesture.dx, 0, Math.max(0, canvasSize.width - sticker.size)),
+            y: clamp(dragStart.current.y + gesture.dy, 0, Math.max(0, canvasSize.height - sticker.size)),
+          };
+
+          pan.setValue(nextPosition);
+          onChange(nextPosition);
+        },
       }),
-    [canvasSize.height, canvasSize.width, onChange, onSelect, sticker.size, sticker.x, sticker.y],
+    [canvasSize.height, canvasSize.width, onChange, onSelect, pan, sticker.size, sticker.x, sticker.y],
   );
 
   const resizeResponder = useMemo(
@@ -453,17 +490,19 @@ function CanvasSticker({
   );
 
   return (
-    <View
+    <Animated.View
       pointerEvents="box-none"
       style={[
         styles.sticker,
         {
-          left: sticker.x,
-          top: sticker.y,
           width: sticker.size,
           height: sticker.size,
           zIndex: sticker.zIndex,
-          transform: [{ rotate: `${sticker.rotation}deg` }],
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y },
+            { rotate: `${sticker.rotation}deg` },
+          ],
         },
       ]}
     >
@@ -487,7 +526,7 @@ function CanvasSticker({
           </View>
         </>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 

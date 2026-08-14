@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Modal, StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomTabs, type AppTab } from './src/components/BottomTabs';
 import { COLORS } from './constants/colors';
-import { AddItemScreen } from './src/screens/AddItemScreen';
+import { AddItemScreen, type AddItemScreenHandle } from './src/screens/AddItemScreen';
 import { CodiBookScreen } from './src/screens/CodiBookScreen';
 import { MyPageScreen } from './src/screens/MyPageScreen';
 import { WardrobeScreen } from './src/screens/WardrobeScreen';
@@ -60,6 +60,7 @@ function AppContent() {
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
   const [friendWardrobeItems, setFriendWardrobeItems] = useState<FriendWardrobeItem[]>([]);
+  const addItemScreenRef = useRef<AddItemScreenHandle>(null);
   const tabBottomOffset = Math.max(8, insets.bottom);
   const tabBarInset = 80 + tabBottomOffset;
 
@@ -429,8 +430,17 @@ function AppContent() {
         onSelectTab={setActiveTab}
       />
 
-      <Modal visible={isAddVisible} animationType="slide" presentationStyle="pageSheet">
-        <AddItemScreen onCancel={() => setIsAddVisible(false)} onSaved={handleSaved} />
+      <Modal
+        visible={isAddVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => addItemScreenRef.current?.requestCancel()}
+      >
+        <AddItemScreen
+          ref={addItemScreenRef}
+          onCancel={() => setIsAddVisible(false)}
+          onSaved={handleSaved}
+        />
       </Modal>
     </View>
   );

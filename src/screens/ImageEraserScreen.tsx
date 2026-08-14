@@ -23,6 +23,7 @@ type ImageEraserScreenProps = {
 type EditorMessage =
   | { type: 'ready' }
   | { type: 'export'; dataUrl: string }
+  | { type: 'history'; canUndo: boolean; canRedo: boolean }
   | { type: 'error'; message: string };
 
 export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScreenProps) {
@@ -31,10 +32,15 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
   const [brushSize, setBrushSize] = useState(32);
   const [isReady, setIsReady] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   useEffect(() => {
     async function loadImage() {
       try {
+        setIsReady(false);
+        setCanUndo(false);
+        setCanRedo(false);
         setImageDataUrl(await readImageAsDataUrl(imageUri));
       } catch (error) {
         Alert.alert(
@@ -49,22 +55,31 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
   }, [imageUri, onCancel]);
 
   useEffect(() => {
-    webViewRef.current?.injectJavaScript(`window.setBrushSize(${brushSize}); true;`);
-  }, [brushSize]);
+    if (isReady) {
+      webViewRef.current?.injectJavaScript(`window.setBrushSize(${brushSize}); true;`);
+    }
+  }, [brushSize, isReady]);
 
   const editorHtml = useMemo(() => {
     if (!imageDataUrl) {
       return '';
     }
 
-    return buildEditorHtml(imageDataUrl, brushSize);
-  }, [brushSize, imageDataUrl]);
+    return buildEditorHtml(imageDataUrl);
+  }, [imageDataUrl]);
 
   const handleMessage = (rawMessage: string) => {
     const message = JSON.parse(rawMessage) as EditorMessage;
 
     if (message.type === 'ready') {
       setIsReady(true);
+      webViewRef.current?.injectJavaScript(`window.setBrushSize(${brushSize}); true;`);
+      return;
+    }
+
+    if (message.type === 'history') {
+      setCanUndo(message.canUndo);
+      setCanRedo(message.canRedo);
       return;
     }
 
@@ -91,6 +106,14 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
 
   const resetCanvas = () => {
     webViewRef.current?.injectJavaScript('window.resetCanvas(); true;');
+  };
+
+  const undoCanvas = () => {
+    webViewRef.current?.injectJavaScript('window.undoStroke(); true;');
+  };
+
+  const redoCanvas = () => {
+    webViewRef.current?.injectJavaScript('window.redoStroke(); true;');
   };
 
   const exportCanvas = () => {
@@ -154,9 +177,27 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
             <Text style={styles.controlLabel}>브러시 크기</Text>
             <Text style={styles.controlCaption}>{brushSize}px</Text>
           </View>
-          <Pressable onPress={resetCanvas} style={styles.resetButton} hitSlop={8}>
-            <Text style={styles.resetButtonText}>Reset</Text>
-          </Pressable>
+          <View style={styles.historyActions}>
+            <Pressable
+              onPress={undoCanvas}
+              disabled={!canUndo}
+              style={[styles.controlButton, !canUndo && styles.controlButtonDisabled]}
+              hitSlop={8}
+            >
+              <Text style={styles.controlButtonText}>Undo</Text>
+            </Pressable>
+            <Pressable
+              onPress={redoCanvas}
+              disabled={!canRedo}
+              style={[styles.controlButton, !canRedo && styles.controlButtonDisabled]}
+              hitSlop={8}
+            >
+              <Text style={styles.controlButtonText}>Redo</Text>
+            </Pressable>
+            <Pressable onPress={resetCanvas} style={styles.controlButton} hitSlop={8}>
+              <Text style={styles.controlButtonText}>Reset</Text>
+            </Pressable>
+          </View>
         </View>
         <Slider
           value={brushSize}
@@ -173,7 +214,7 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
   );
 }
 
-function buildEditorHtml(imageDataUrl: string, brushSize: number) {
+function buildEditorHtml(imageDataUrl: string) {
   return `
 <!doctype html>
 <html>
@@ -236,12 +277,66 @@ function buildEditorHtml(imageDataUrl: string, brushSize: number) {
     const brush = document.getElementById('brush');
     const ctx = canvas.getContext('2d');
     const image = new Image();
-    let brushSize = ${brushSize};
+    let brushSize = 32;
     let drawing = false;
     let lastPoint = null;
+    let strokeChanged = false;
+    let history = [];
+    let historyIndex = -1;
+    const maxHistory = 32;
 
     function post(message) {
       window.ReactNativeWebView.postMessage(JSON.stringify(message));
+    }
+
+    function postHistoryState() {
+      post({ type: 'history', canUndo: historyIndex > 0, canRedo: historyIndex < history.length - 1 });
+    }
+
+    function drawOriginalImage() {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    }
+
+    function pushHistory() {
+      try {
+        if (historyIndex < history.length - 1) {
+          history = history.slice(0, historyIndex + 1);
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        history.push(dataUrl);
+
+        if (history.length > maxHistory) {
+          history.shift();
+        }
+
+        historyIndex = history.length - 1;
+        postHistoryState();
+      } catch (error) {
+        post({ type: 'error', message: error.message || 'history failed' });
+      }
+    }
+
+    function restoreHistory(index) {
+      if (index < 0 || index >= history.length) {
+        postHistoryState();
+        return;
+      }
+
+      const snapshot = new Image();
+      snapshot.onload = function() {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(snapshot, 0, 0, canvas.width, canvas.height);
+        historyIndex = index;
+        postHistoryState();
+      };
+      snapshot.onerror = function() {
+        post({ type: 'error', message: '편집 히스토리를 되돌리지 못했어요.' });
+      };
+      snapshot.src = history[index];
     }
 
     function setPreviewSize() {
@@ -288,11 +383,13 @@ function buildEditorHtml(imageDataUrl: string, brushSize: number) {
       ctx.fill();
       ctx.restore();
       lastPoint = point;
+      strokeChanged = true;
     }
 
     function start(event) {
       event.preventDefault();
       drawing = true;
+      strokeChanged = false;
       const point = pointFromEvent(event);
       moveBrush(point);
       eraseTo(point);
@@ -311,6 +408,10 @@ function buildEditorHtml(imageDataUrl: string, brushSize: number) {
       event.preventDefault();
       drawing = false;
       lastPoint = null;
+      if (strokeChanged) {
+        pushHistory();
+        strokeChanged = false;
+      }
     }
 
     window.setBrushSize = function(nextSize) {
@@ -319,9 +420,16 @@ function buildEditorHtml(imageDataUrl: string, brushSize: number) {
     };
 
     window.resetCanvas = function() {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      drawOriginalImage();
+      pushHistory();
+    };
+
+    window.undoStroke = function() {
+      restoreHistory(historyIndex - 1);
+    };
+
+    window.redoStroke = function() {
+      restoreHistory(historyIndex + 1);
     };
 
     window.exportCanvas = function() {
@@ -338,7 +446,8 @@ function buildEditorHtml(imageDataUrl: string, brushSize: number) {
       canvas.width = Math.max(1, Math.round(image.width * scale));
       canvas.height = Math.max(1, Math.round(image.height * scale));
       canvas.style.aspectRatio = canvas.width + ' / ' + canvas.height;
-      window.resetCanvas();
+      drawOriginalImage();
+      pushHistory();
       setPreviewSize();
       post({ type: 'ready' });
     };
@@ -442,7 +551,7 @@ const styles = StyleSheet.create({
   brushPreviewCircle: {
     borderWidth: 2,
     borderColor: COLORS.accent,
-    backgroundColor: 'rgba(212, 163, 115, 0.24)',
+    backgroundColor: COLORS.secondary,
   },
   brushTextGroup: {
     flex: 1,
@@ -458,9 +567,15 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: COLORS.textSecondary,
   },
-  resetButton: {
+  historyActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    gap: 6,
+  },
+  controlButton: {
     minHeight: 44,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -468,7 +583,10 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
-  resetButtonText: {
+  controlButtonDisabled: {
+    opacity: 0.4,
+  },
+  controlButtonText: {
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.primary,
