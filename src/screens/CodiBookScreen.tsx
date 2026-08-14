@@ -51,6 +51,16 @@ const GRID_GAP = 8;
 const SIDE_PADDING = 16;
 const MIN_STICKER_SIZE = 72;
 const DEFAULT_STICKER_SIZE = 140;
+const SELECTED_OUTLINE_OFFSETS = [
+  { x: -2, y: 0 },
+  { x: 2, y: 0 },
+  { x: 0, y: -2 },
+  { x: 0, y: 2 },
+  { x: -1.5, y: -1.5 },
+  { x: 1.5, y: 1.5 },
+  { x: -1.5, y: 1.5 },
+  { x: 1.5, y: -1.5 },
+];
 
 export function CodiBookScreen({
   items,
@@ -293,15 +303,32 @@ export function CodiBookScreen({
             <Text style={styles.title}>코디북</Text>
             <Text style={styles.caption}>저장한 코디를 보고 수정해요</Text>
           </View>
-          {mode === 'list' ? (
-            <Pressable onPress={openNewPicker} style={styles.primarySquareButton} hitSlop={8}>
-              <Text style={styles.primarySquareButtonText}>+</Text>
-            </Pressable>
-          ) : (
-            <Pressable onPress={() => setMode('list')} style={styles.secondaryButton} hitSlop={8}>
-              <Text style={styles.secondaryButtonText}>뒤로</Text>
-            </Pressable>
-          )}
+          <View style={styles.headerActions}>
+            {mode === 'picker' ? (
+              <Pressable onPress={() => setMode('list')} style={styles.secondaryButton} hitSlop={8}>
+                <Text style={styles.secondaryButtonText}>닫기</Text>
+              </Pressable>
+            ) : null}
+            {mode === 'canvas' && editingOutfitId ? (
+              <Pressable onPress={confirmDeleteOutfit} style={styles.headerDangerButton} hitSlop={8}>
+                <Text style={styles.headerDangerButtonText}>삭제</Text>
+              </Pressable>
+            ) : null}
+            {mode === 'canvas' ? (
+              <Pressable
+                onPress={saveOutfit}
+                disabled={isSaving}
+                style={[styles.headerSaveButton, isSaving && styles.disabledButton]}
+                hitSlop={8}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color={COLORS.surface} />
+                ) : (
+                  <Text style={styles.headerSaveButtonText}>저장</Text>
+                )}
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         {mode === 'list' ? (
@@ -310,7 +337,6 @@ export function CodiBookScreen({
             tileSize={tileSize}
             bottomInset={bottomInset}
             onSelect={openOutfit}
-            onAdd={openNewPicker}
           />
         ) : null}
 
@@ -440,8 +466,13 @@ export function CodiBookScreen({
             </View>
 
             <View style={styles.canvasActions}>
-              <Pressable onPress={() => setMode('picker')} style={styles.secondaryButton} hitSlop={8}>
-                <Text style={styles.secondaryButtonText}>옷 추가</Text>
+              <Pressable
+                onPress={() => setMode('picker')}
+                style={styles.canvasIconButton}
+                accessibilityLabel="옷 추가"
+                hitSlop={8}
+              >
+                <Text style={styles.canvasIconButtonText}>+</Text>
               </Pressable>
               <Pressable
                 onPress={bringSelectedForward}
@@ -450,23 +481,6 @@ export function CodiBookScreen({
                 hitSlop={8}
               >
                 <Text style={styles.secondaryButtonText}>앞으로</Text>
-              </Pressable>
-              {editingOutfitId ? (
-                <Pressable onPress={confirmDeleteOutfit} style={styles.dangerButton} hitSlop={8}>
-                  <Text style={styles.dangerButtonText}>삭제</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={saveOutfit}
-                disabled={isSaving}
-                style={[styles.primaryButton, isSaving && styles.disabledButton]}
-                hitSlop={8}
-              >
-                {isSaving ? (
-                  <ActivityIndicator color={COLORS.surface} />
-                ) : (
-                  <Text style={styles.primaryButtonText}>저장</Text>
-                )}
               </Pressable>
             </View>
 
@@ -510,6 +524,17 @@ export function CodiBookScreen({
             </View>
           </View>
         ) : null}
+
+        {mode === 'list' ? (
+          <Pressable
+            onPress={openNewPicker}
+            style={[styles.fab, { bottom: bottomInset + 16 }]}
+            accessibilityLabel="코디 추가"
+            hitSlop={8}
+          >
+            <Text style={styles.fabText}>+</Text>
+          </Pressable>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -520,10 +545,9 @@ type OutfitListProps = {
   tileSize: number;
   bottomInset: number;
   onSelect: (outfit: Outfit) => void;
-  onAdd: () => void;
 };
 
-function OutfitList({ outfits, tileSize, bottomInset, onSelect, onAdd }: OutfitListProps) {
+function OutfitList({ outfits, tileSize, bottomInset, onSelect }: OutfitListProps) {
   if (outfits.length === 0) {
     return (
       <View style={styles.emptyState}>
@@ -531,9 +555,6 @@ function OutfitList({ outfits, tileSize, bottomInset, onSelect, onAdd }: OutfitL
         <View style={styles.speechBubble}>
           <Text style={styles.emptyText}>아직 저장된 코디가 없어북</Text>
         </View>
-        <Pressable onPress={onAdd} style={styles.primaryButton} hitSlop={8}>
-          <Text style={styles.primaryButtonText}>코디 추가</Text>
-        </Pressable>
       </View>
     );
   }
@@ -872,6 +893,22 @@ function CanvasSticker({
         style={[styles.stickerTouch, selected && styles.stickerTouchSelected]}
         {...dragResponder.panHandlers}
       >
+        {selected ? (
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            {SELECTED_OUTLINE_OFFSETS.map((offset) => (
+              <Image
+                key={`${offset.x}-${offset.y}`}
+                source={{ uri: sticker.localImagePath }}
+                style={[
+                  styles.stickerOutlineImage,
+                  {
+                    transform: [{ translateX: offset.x }, { translateY: offset.y }],
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        ) : null}
         <Image source={{ uri: sticker.localImagePath }} style={styles.stickerImage} />
       </View>
 
@@ -933,6 +970,40 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: COLORS.textSecondary,
   },
+  headerActions: {
+    minWidth: 96,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  headerSaveButton: {
+    minHeight: 42,
+    paddingHorizontal: 16,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  headerSaveButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.surface,
+  },
+  headerDangerButton: {
+    minHeight: 42,
+    paddingHorizontal: 14,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.danger,
+  },
+  headerDangerButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.surface,
+  },
   screenBody: {
     flex: 1,
   },
@@ -946,19 +1017,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.surface,
-  },
-  primarySquareButton: {
-    width: 48,
-    minHeight: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-  },
-  primarySquareButtonText: {
-    fontSize: 28,
     fontWeight: '700',
     color: COLORS.surface,
   },
@@ -976,19 +1034,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.primary,
-  },
-  dangerButton: {
-    minHeight: 44,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.danger,
-  },
-  dangerButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.surface,
   },
   disabledButton: {
     backgroundColor: COLORS.primaryLight,
@@ -1214,13 +1259,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.surface,
   },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  fabText: {
+    fontSize: 30,
+    fontWeight: '700',
+    lineHeight: 34,
+    color: COLORS.surface,
+  },
   canvasActions: {
     paddingHorizontal: 16,
     paddingBottom: 8,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: 8,
+  },
+  canvasIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  canvasIconButtonText: {
+    fontSize: 26,
+    fontWeight: '700',
+    lineHeight: 30,
+    color: COLORS.surface,
   },
   canvasMetaPanel: {
     paddingHorizontal: 16,
@@ -1310,7 +1385,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   stickerTouchSelected: {
-    opacity: 0.96,
+    opacity: 1,
+  },
+  stickerOutlineImage: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    resizeMode: 'contain',
+    tintColor: COLORS.primaryLight,
+    opacity: 0.62,
   },
   stickerImage: {
     width: '100%',

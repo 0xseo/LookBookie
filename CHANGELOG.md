@@ -35,3 +35,4 @@
 [2026-08-14] | [UX Fix] | Collapsed manual color palettes behind the automatic recommendation until the user asks to pick another color | Keep the metadata form focused after representative color extraction
 [2026-08-14] | [Phase 2] | Removed CodiBook sticker borders and added codi name plus season chips to the canvas editor and saved outfit cards | Let users save clearer codi metadata without visual frames around placed clothes
 [2026-08-14] | [Phase 3] | Added local and Supabase outfit seasons storage with a database migration and friend outfit read mapping | Keep codi season metadata available offline and in shared friend outfit views
+[2026-08-14] | [UX Fix] | Replaced CodiBook detail back controls with header save/delete actions, unified wardrobe/codi add FABs, and added alpha-shaped selected sticker outlines | Clarify which clothing item is being edited while keeping add actions consistent

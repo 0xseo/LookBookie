@@ -152,8 +152,13 @@ export function WardrobeScreen({
           />
         )}
 
-        <Pressable onPress={onAddPress} style={[styles.fab, { bottom: bottomInset }]} hitSlop={8}>
-          <Text style={styles.fabText}>+ 옷 추가</Text>
+        <Pressable
+          onPress={onAddPress}
+          style={[styles.fab, { bottom: bottomInset + 16 }]}
+          accessibilityLabel="옷 추가"
+          hitSlop={8}
+        >
+          <Text style={styles.fabText}>+</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -400,16 +405,17 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 16,
-    minHeight: 52,
-    paddingHorizontal: 20,
+    width: 56,
+    height: 56,
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
   },
   fabText: {
-    fontSize: 16,
+    fontSize: 30,
     fontWeight: '700',
+    lineHeight: 34,
     color: COLORS.surface,
   },
 });
