@@ -40,6 +40,8 @@ export const COLORS = {
 
   // Toast & Character Message Box
   bubbleBg: '#F1F5F9',     // 룩부기 대화상자 배경
+  overlay: 'rgba(26, 29, 30, 0.42)', // 커스텀 확인 모달 배경
+  transparent: 'transparent', // 아이콘/선택 컨트롤의 비활성 테두리
 };
 
 

@@ -6,7 +6,9 @@ import {
   BackHandler,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,19 +19,31 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  Check,
+  Plus,
+  RotateCw,
+  Scaling,
+  Trash2,
+  X,
+} from "lucide-react-native";
 
 import { COLORS } from "../../constants/colors";
-import { syncOutfitToCloud } from "../services/outfitCloud";
+import {
+  deleteOutfitFromCloud,
+  syncOutfitToCloud,
+} from "../services/outfitCloud";
 import {
   deleteOutfit,
   insertOutfit,
   listOutfits,
+  updateOutfitCloudState,
   updateOutfit,
 } from "../storage/database";
 import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
+import { useCategoryOptions } from "../hooks/useCategoryOptions";
 import { clothingMatchesSearch } from "../services/colorSearch";
 import {
-  CATEGORY_FILTERS,
   SEASONS,
   type CategoryFilter,
   type ClothingItem,
@@ -71,6 +85,7 @@ const SIDE_PADDING = 16;
 const MIN_STICKER_SIZE = 72;
 const DEFAULT_STICKER_SIZE = 140;
 const HANDLE_SIZE = 44;
+const HANDLE_VISUAL_SIZE = 32;
 const MIN_HANDLE_SPAN = 60;
 const SELECTED_OUTLINE_OFFSETS = [
   { x: -2, y: 0 },
@@ -110,7 +125,10 @@ export function CodiBookScreen({
   const [pickerCategory, setPickerCategory] = useState<CategoryFilter>("전체");
   const [pickerQuery, setPickerQuery] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { colorOptions } = useColorPaletteOptions();
+  const { categoryOptions } = useCategoryOptions();
+  const categoryFilters: CategoryFilter[] = ["전체", ...categoryOptions];
 
   const tileSize = useMemo(() => {
     const availableWidth =
@@ -164,6 +182,12 @@ export function CodiBookScreen({
   useEffect(() => {
     loadSavedOutfits();
   }, [loadSavedOutfits]);
+
+  useEffect(() => {
+    if (pickerCategory !== "전체" && !categoryOptions.includes(pickerCategory)) {
+      setPickerCategory("전체");
+    }
+  }, [categoryOptions, pickerCategory]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
@@ -282,42 +306,58 @@ export function CodiBookScreen({
 
     try {
       const outfitName = editingOutfitName || `코디 ${outfits.length + 1}`;
+      const existingOutfit = editingOutfitId
+        ? outfits.find((outfit) => outfit.id === editingOutfitId) ?? null
+        : null;
+      const canvasWidth = canvasSize.width || null;
+      const canvasHeight = canvasSize.height || null;
+      let localOutfitId: number;
 
-      if (editingOutfitId) {
+      if (existingOutfit) {
         await updateOutfit({
-          id: editingOutfitId,
+          ...existingOutfit,
           name: outfitName,
           seasons: editingOutfitSeasons,
           stickers,
-          canvasWidth: canvasSize.width || null,
-          canvasHeight: canvasSize.height || null,
-          createdAt: new Date().toISOString(),
+          canvasWidth,
+          canvasHeight,
+          cloudSyncStatus: existingOutfit.remoteRecordId ? "pending" : existingOutfit.cloudSyncStatus,
+          cloudError: null,
+          syncedAt: existingOutfit.remoteRecordId ? null : existingOutfit.syncedAt,
         });
+        localOutfitId = existingOutfit.id;
       } else {
-        await insertOutfit({
+        localOutfitId = await insertOutfit({
           name: outfitName,
           seasons: editingOutfitSeasons,
           stickers,
-          canvasWidth: canvasSize.width || null,
-          canvasHeight: canvasSize.height || null,
+          canvasWidth,
+          canvasHeight,
         });
       }
 
       const cloudResult = await syncOutfitToCloud({
+        remoteRecordId: existingOutfit?.remoteRecordId ?? null,
         name: outfitName,
         seasons: editingOutfitSeasons,
         stickers,
         wardrobeItems: items,
-        canvasWidth: canvasSize.width || null,
-        canvasHeight: canvasSize.height || null,
+        canvasWidth,
+        canvasHeight,
+        allowLegacyMatch: Boolean(existingOutfit && !existingOutfit.remoteRecordId),
+        removeLegacyDuplicates:
+          Boolean(existingOutfit && !existingOutfit.remoteRecordId) &&
+          outfits.filter((outfit) => outfit.name === outfitName).length === 1,
       });
+
+      await updateOutfitCloudState(localOutfitId, cloudResult);
 
       await loadSavedOutfits();
       await onOutfitSaved();
       setMode("list");
       Alert.alert(
         "저장했어북",
-        cloudResult.synced
+        cloudResult.cloudSyncStatus === "synced"
           ? "코디북에 저장하고 친구가 볼 수 있게 클라우드에도 올렸어요."
           : "코디북에 로컬 저장했어요. 클라우드는 로그인 후 다시 저장하면 공유돼요."
       );
@@ -342,25 +382,49 @@ export function CodiBookScreen({
         text: "삭제",
         style: "destructive",
         onPress: async () => {
-          await deleteOutfit(editingOutfitId);
-          await loadSavedOutfits();
-          await onOutfitSaved();
-          setMode("list");
-          setEditingOutfitId(null);
-          setStickers([]);
-          setSelectedStickerId(null);
+          const deletingOutfit = outfits.find((outfit) => outfit.id === editingOutfitId);
+
+          if (!deletingOutfit) {
+            return;
+          }
+
+          try {
+            await deleteOutfitFromCloud(deletingOutfit.remoteRecordId, deletingOutfit.name);
+            await deleteOutfit(editingOutfitId);
+            await loadSavedOutfits();
+            await onOutfitSaved();
+            setMode("list");
+            setEditingOutfitId(null);
+            setStickers([]);
+            setSelectedStickerId(null);
+          } catch (error) {
+            Alert.alert(
+              "코디 삭제에 실패했어북",
+              error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
+            );
+          }
         },
       },
     ]);
   };
 
   const refreshCodiBook = async () => {
-    await loadSavedOutfits();
-    await onOutfitSaved();
+    setIsRefreshing(true);
+
+    try {
+      await loadSavedOutfits();
+      await onOutfitSaved();
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
       <View style={[styles.container, { paddingBottom: bottomInset + 8 }]}>
         <View style={styles.header}>
           <View>
@@ -368,15 +432,17 @@ export function CodiBookScreen({
             <Text style={styles.caption}>저장한 코디를 보고 수정해요</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable
-              onPress={refreshCodiBook}
-              style={styles.mascotSlot}
-              accessibilityLabel="룩부기 코디북 새로고침"
-              accessibilityRole="button"
-              hitSlop={8}
-            >
-              <Text style={styles.mascot}>🐢</Text>
-            </Pressable>
+            {mode === "list" ? (
+              <Pressable
+                onPress={refreshCodiBook}
+                style={styles.mascotSlot}
+                accessibilityLabel="룩부기 코디북 새로고침"
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <Text style={styles.mascot}>🐢</Text>
+              </Pressable>
+            ) : null}
             {mode === "picker" ? (
               <Pressable
                 onPress={() => setMode("list")}
@@ -433,12 +499,14 @@ export function CodiBookScreen({
               outfits={visibleOutfits}
               tileSize={tileSize}
               bottomInset={bottomInset}
+              refreshing={isRefreshing}
               emptyText={
                 outfitQuery.trim()
                   ? "검색 결과가 없어북"
                   : "아직 저장된 코디가 없어북"
               }
               onSelect={openOutfit}
+              onRefresh={refreshCodiBook}
             />
           </View>
         ) : null}
@@ -459,7 +527,7 @@ export function CodiBookScreen({
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.filterContent}
               >
-                {CATEGORY_FILTERS.map((category) => {
+                {categoryFilters.map((category) => {
                   const selected = pickerCategory === category;
 
                   return (
@@ -543,9 +611,11 @@ export function CodiBookScreen({
                           selected && styles.pickBadgeSelected,
                         ]}
                       >
-                        <Text style={styles.pickBadgeText}>
-                          {selected ? "✓" : "+"}
-                        </Text>
+                        {selected ? (
+                          <Check color={COLORS.surface} size={17} strokeWidth={2.8} />
+                        ) : (
+                          <Plus color={COLORS.surface} size={17} strokeWidth={2.8} />
+                        )}
                       </View>
                     </Pressable>
                   );
@@ -607,7 +677,7 @@ export function CodiBookScreen({
                 accessibilityLabel="옷 추가"
                 hitSlop={8}
               >
-                <Text style={styles.canvasIconButtonText}>+</Text>
+                <Plus color={COLORS.surface} size={24} strokeWidth={2.6} />
               </Pressable>
               <Pressable
                 onPress={bringSelectedForward}
@@ -672,10 +742,11 @@ export function CodiBookScreen({
             accessibilityLabel="코디 추가"
             hitSlop={8}
           >
-            <Text style={styles.fabText}>+</Text>
+            <Plus color={COLORS.surface} size={28} strokeWidth={2.6} />
           </Pressable>
         ) : null}
       </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -684,38 +755,42 @@ type OutfitListProps = {
   outfits: Outfit[];
   tileSize: number;
   bottomInset: number;
+  refreshing: boolean;
   emptyText: string;
   onSelect: (outfit: Outfit) => void;
+  onRefresh: () => void | Promise<void>;
 };
 
 function OutfitList({
   outfits,
   tileSize,
   bottomInset,
+  refreshing,
   emptyText,
   onSelect,
+  onRefresh,
 }: OutfitListProps) {
-  if (outfits.length === 0) {
-    return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyMascot}>🐢</Text>
-        <View style={styles.speechBubble}>
-          <Text style={styles.emptyText}>{emptyText}</Text>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <FlatList
       data={outfits}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
       keyExtractor={(outfit) => String(outfit.id)}
       numColumns={GRID_COLUMNS}
       columnWrapperStyle={styles.outfitGridRow}
       contentContainerStyle={[
         styles.outfitListContent,
         { paddingBottom: bottomInset + 24 },
+        outfits.length === 0 && styles.emptyListContent,
       ]}
+      ListEmptyComponent={
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyMascot}>🐢</Text>
+          <View style={styles.speechBubble}>
+            <Text style={styles.emptyText}>{emptyText}</Text>
+          </View>
+        </View>
+      }
       renderItem={({ item }) => (
         <Pressable
           onPress={() => onSelect(item)}
@@ -818,13 +893,16 @@ function SelectedBar({ stickers, onRemove, onArrange }: SelectedBarProps) {
               key={sticker.id}
               onPress={() => onRemove(sticker.id)}
               style={styles.selectedThumb}
+              accessibilityLabel="선택한 옷 제거"
               hitSlop={8}
             >
               <Image
                 source={{ uri: sticker.localImagePath }}
                 style={styles.selectedThumbImage}
               />
-              <Text style={styles.selectedRemove}>×</Text>
+              <View pointerEvents="none" style={styles.selectedRemove}>
+                <X color={COLORS.surface} size={14} strokeWidth={2.8} />
+              </View>
             </Pressable>
           ))
         )}
@@ -1184,9 +1262,12 @@ function CanvasSticker({
               styles.deleteHandle,
               deleteHandlePosition,
             ]}
+            accessibilityLabel="배치에서 옷 삭제"
             hitSlop={8}
           >
-            <Text style={styles.handleText}>×</Text>
+            <View style={[styles.handleVisual, styles.deleteHandle]}>
+              <Trash2 color={COLORS.surface} size={16} strokeWidth={2.4} />
+            </View>
           </Pressable>
           <View
             style={[
@@ -1194,9 +1275,12 @@ function CanvasSticker({
               styles.rotateHandle,
               rotateHandlePosition,
             ]}
+            accessibilityLabel="옷 회전"
             {...rotateResponder.panHandlers}
           >
-            <Text style={styles.handleText}>↻</Text>
+            <View style={[styles.handleVisual, styles.rotateHandle]}>
+              <RotateCw color={COLORS.surface} size={16} strokeWidth={2.4} />
+            </View>
           </View>
           <View
             style={[
@@ -1204,9 +1288,12 @@ function CanvasSticker({
               styles.resizeHandle,
               resizeHandlePosition,
             ]}
+            accessibilityLabel="옷 크기 조절"
             {...resizeResponder.panHandlers}
           >
-            <Text style={styles.handleText}>↘</Text>
+            <View style={[styles.handleVisual, styles.resizeHandle]}>
+              <Scaling color={COLORS.surface} size={16} strokeWidth={2.4} />
+            </View>
           </View>
         </>
       ) : null}
@@ -1258,7 +1345,10 @@ function outfitMatchesSearch(
   });
 }
 
-function getHandleFrame(stickerSize: number, imageSize: ImageSize | null): VisualFrame {
+function getHandleFrame(
+  stickerSize: number,
+  imageSize: ImageSize | null
+): VisualFrame {
   const visibleFrame = getVisibleImageFrame(stickerSize, imageSize);
   const minSpan = Math.min(MIN_HANDLE_SPAN, stickerSize);
   const width = Math.min(stickerSize, Math.max(visibleFrame.width, minSpan));
@@ -1274,7 +1364,10 @@ function getHandleFrame(stickerSize: number, imageSize: ImageSize | null): Visua
   };
 }
 
-function getVisibleImageFrame(stickerSize: number, imageSize: ImageSize | null): VisualFrame {
+function getVisibleImageFrame(
+  stickerSize: number,
+  imageSize: ImageSize | null
+): VisualFrame {
   if (!imageSize || imageSize.width <= 0 || imageSize.height <= 0) {
     return { x: 0, y: 0, width: stickerSize, height: stickerSize };
   }
@@ -1325,6 +1418,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  keyboardView: {
+    flex: 1,
   },
   container: {
     flex: 1,
@@ -1437,6 +1533,9 @@ const styles = StyleSheet.create({
   },
   outfitListContent: {
     padding: 16,
+  },
+  emptyListContent: {
+    flexGrow: 1,
   },
   outfitGridRow: {
     gap: 8,
@@ -1555,6 +1654,7 @@ const styles = StyleSheet.create({
   libraryImageFrame: {
     width: "100%",
     aspectRatio: 1,
+    padding: 6,
     backgroundColor: COLORS.surface,
   },
   libraryImage: {
@@ -1586,17 +1686,12 @@ const styles = StyleSheet.create({
   pickBadgeSelected: {
     backgroundColor: COLORS.accent,
   },
-  pickBadgeText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.surface,
-  },
   selectedBar: {
     position: "absolute",
     left: 16,
     right: 16,
     bottom: 16,
-    minHeight: 72,
+    minHeight: 76,
     padding: 8,
     borderRadius: 16,
     borderWidth: 1,
@@ -1608,6 +1703,8 @@ const styles = StyleSheet.create({
   },
   selectedList: {
     alignItems: "center",
+    paddingTop: 4,
+    paddingRight: 4,
     gap: 8,
   },
   selectedEmptyText: {
@@ -1631,18 +1728,14 @@ const styles = StyleSheet.create({
   },
   selectedRemove: {
     position: "absolute",
-    right: -6,
-    top: -8,
+    right: 2,
+    top: 2,
     width: 22,
     height: 22,
     borderRadius: 11,
-    overflow: "hidden",
-    textAlign: "center",
-    lineHeight: 22,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.danger,
-    fontSize: 14,
-    fontWeight: "700",
-    color: COLORS.surface,
   },
   arrangeButton: {
     minWidth: 64,
@@ -1667,11 +1760,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
-  fabText: {
-    fontSize: 30,
-    fontWeight: "700",
-    color: COLORS.surface,
-  },
   canvasActions: {
     paddingHorizontal: 16,
     paddingBottom: 8,
@@ -1687,12 +1775,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.primary,
-  },
-  canvasIconButtonText: {
-    fontSize: 26,
-    fontWeight: "700",
-    lineHeight: 30,
-    color: COLORS.surface,
   },
   canvasMetaPanel: {
     paddingHorizontal: 16,
@@ -1805,6 +1887,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  handleVisual: {
+    width: HANDLE_VISUAL_SIZE,
+    height: HANDLE_VISUAL_SIZE,
+    borderRadius: HANDLE_VISUAL_SIZE / 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   deleteHandle: {
     backgroundColor: COLORS.danger,
   },
@@ -1813,10 +1902,5 @@ const styles = StyleSheet.create({
   },
   resizeHandle: {
     backgroundColor: COLORS.primary,
-  },
-  handleText: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: COLORS.surface,
   },
 });

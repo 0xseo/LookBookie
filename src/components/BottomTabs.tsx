@@ -1,13 +1,13 @@
-import { BookOpen, Shirt, UserRound, Users } from 'lucide-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { BookOpen, Shirt, UserRound, Users } from "lucide-react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { COLORS } from '../../constants/colors';
+import { COLORS } from "../../constants/colors";
 
-export type AppTab = 'wardrobe' | 'codiBook' | 'friends' | 'profile';
+export type AppTab = "wardrobe" | "codiBook" | "friends" | "profile";
 
 type BottomTabsProps = {
   activeTab: AppTab;
-  bottomOffset: number;
+  bottomInset: number;
   onSelectTab: (tab: AppTab) => void;
 };
 
@@ -18,15 +18,21 @@ type TabConfig = {
 };
 
 const TABS: TabConfig[] = [
-  { key: 'wardrobe', label: '옷장', Icon: Shirt },
-  { key: 'codiBook', label: '코디북', Icon: BookOpen },
-  { key: 'friends', label: '친구', Icon: Users },
-  { key: 'profile', label: '마이', Icon: UserRound },
+  { key: "wardrobe", label: "옷장", Icon: Shirt },
+  { key: "codiBook", label: "코디북", Icon: BookOpen },
+  { key: "friends", label: "친구", Icon: Users },
+  { key: "profile", label: "마이", Icon: UserRound },
 ];
 
-export function BottomTabs({ activeTab, bottomOffset, onSelectTab }: BottomTabsProps) {
+export function BottomTabs({
+  activeTab,
+  bottomInset,
+  onSelectTab,
+}: BottomTabsProps) {
   return (
-    <View style={[styles.container, { bottom: bottomOffset }]}>
+    <View
+      style={[styles.container, { paddingBottom: Math.max(6, bottomInset) }]}
+    >
       {TABS.map((tab) => {
         const isActive = activeTab === tab.key;
         const iconColor = isActive ? COLORS.primary : COLORS.textSecondary;
@@ -36,11 +42,19 @@ export function BottomTabs({ activeTab, bottomOffset, onSelectTab }: BottomTabsP
           <Pressable
             key={tab.key}
             onPress={() => onSelectTab(tab.key)}
-            style={[styles.tab, isActive && styles.activeTab]}
+            style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
             hitSlop={8}
           >
-            <Icon color={iconColor} size={20} strokeWidth={2.2} />
-            <Text style={[styles.label, isActive && styles.activeText]}>{tab.label}</Text>
+            <View style={[styles.iconWell]}>
+              <Icon
+                color={iconColor}
+                size={21}
+                strokeWidth={isActive ? 2.5 : 2}
+              />
+            </View>
+            <Text style={[styles.label, isActive && styles.activeText]}>
+              {tab.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -50,35 +64,48 @@ export function BottomTabs({ activeTab, bottomOffset, onSelectTab }: BottomTabsP
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    minHeight: 64,
-    padding: 8,
-    borderRadius: 16,
-    borderWidth: 1,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    minHeight: 62,
+    paddingHorizontal: 4,
+    paddingTop: 6,
+    borderTopWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
-    flexDirection: 'row',
-    gap: 8,
+    flexDirection: "row",
+    shadowColor: COLORS.textPrimary,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 8,
   },
   tab: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    minHeight: 50,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  activeTab: {
-    backgroundColor: COLORS.secondary,
+  tabPressed: {
+    opacity: 0.68,
+  },
+  iconWell: {
+    width: 52,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.transparent,
   },
   label: {
-    marginTop: 2,
-    fontSize: 12,
-    fontWeight: '600',
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: "500",
     color: COLORS.textSecondary,
   },
   activeText: {
     color: COLORS.primary,
+    fontWeight: "700",
   },
 });

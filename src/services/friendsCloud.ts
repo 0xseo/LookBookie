@@ -27,21 +27,81 @@ export async function ensureCurrentProfile() {
   }
 
   const email = user.email.trim().toLowerCase();
-  const { error: upsertError } = await client.from('profiles').upsert({
-    id: user.id,
-    email,
-    display_name: email.split('@')[0] ?? email,
-  });
+  const { data: existingProfile, error: profileError } = await client
+    .from('profiles')
+    .select('id,email,display_name')
+    .eq('id', user.id)
+    .maybeSingle();
 
-  if (upsertError) {
-    throw upsertError;
+  if (profileError) {
+    throw profileError;
   }
 
-  return {
-    id: user.id,
-    email,
-    displayName: email.split('@')[0] ?? null,
-  };
+  if (existingProfile) {
+    if (existingProfile.email === email) {
+      return mapProfile(existingProfile);
+    }
+
+    const { data: updatedProfile, error: updateError } = await client
+      .from('profiles')
+      .update({ email, updated_at: new Date().toISOString() })
+      .eq('id', user.id)
+      .select('id,email,display_name')
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    return mapProfile(updatedProfile);
+  }
+
+  const { data: insertedProfile, error: insertError } = await client
+    .from('profiles')
+    .insert({
+      id: user.id,
+      email,
+      display_name: email.split('@')[0] ?? email,
+    })
+    .select('id,email,display_name')
+    .single();
+
+  if (insertError) {
+    throw insertError;
+  }
+
+  return mapProfile(insertedProfile);
+}
+
+export async function updateCurrentProfileDisplayName(displayNameInput: string) {
+  const user = await getCloudUser();
+  const client = getConfiguredSupabase();
+  const displayName = displayNameInput.trim();
+
+  if (!displayName) {
+    throw new Error('친구에게 표시할 이름을 입력해 주세요.');
+  }
+
+  if (displayName.length > 24) {
+    throw new Error('이름은 24자 이내로 입력해 주세요.');
+  }
+
+  const { data, error } = await client
+    .from('profiles')
+    .update({ display_name: displayName, updated_at: new Date().toISOString() })
+    .eq('id', user.id)
+    .select('id,email,display_name')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  if (data.display_name !== displayName) {
+    throw new Error('프로필 이름이 서버에 반영되지 않았어요.');
+  }
+
+  return mapProfile(data);
 }
 
 type FriendshipRow = {

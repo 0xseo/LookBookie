@@ -10,6 +10,7 @@ import {
 import Slider from '@react-native-community/slider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
+import { Redo2, RotateCcw, Undo2 } from 'lucide-react-native';
 
 import { COLORS } from '../../constants/colors';
 import { readImageAsDataUrl, saveEditedDataUrlImage } from '../storage/imageStorage';
@@ -209,20 +210,27 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
               onPress={undoCanvas}
               disabled={!canUndo}
               style={[styles.iconButton, !canUndo && styles.controlButtonDisabled]}
+              accessibilityLabel="지우개 작업 되돌리기"
               hitSlop={8}
             >
-              <Text style={styles.iconButtonText}>↶</Text>
+              <Undo2 color={COLORS.primary} size={20} strokeWidth={2.2} />
             </Pressable>
             <Pressable
               onPress={redoCanvas}
               disabled={!canRedo}
               style={[styles.iconButton, !canRedo && styles.controlButtonDisabled]}
+              accessibilityLabel="지우개 작업 다시 실행"
               hitSlop={8}
             >
-              <Text style={styles.iconButtonText}>↷</Text>
+              <Redo2 color={COLORS.primary} size={20} strokeWidth={2.2} />
             </Pressable>
-            <Pressable onPress={resetCanvas} style={styles.iconButton} hitSlop={8}>
-              <Text style={styles.iconButtonText}>↻</Text>
+            <Pressable
+              onPress={resetCanvas}
+              style={styles.iconButton}
+              accessibilityLabel="지우개 작업 초기화"
+              hitSlop={8}
+            >
+              <RotateCcw color={COLORS.primary} size={20} strokeWidth={2.2} />
             </Pressable>
           </View>
         </View>
@@ -677,10 +685,5 @@ const styles = StyleSheet.create({
   },
   controlButtonDisabled: {
     opacity: 0.4,
-  },
-  iconButtonText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: COLORS.primary,
   },
 });

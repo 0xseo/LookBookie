@@ -28,8 +28,9 @@ import {
   syncClothingItemUpdateToCloud,
 } from '../services/wardrobeCloud';
 import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
+import { useCategoryOptions } from '../hooks/useCategoryOptions';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import {
-  CLOTHING_CATEGORIES,
   SEASONS,
   type ClothingCategory,
   type ClothingColor,
@@ -71,7 +72,9 @@ export function ClothingDetailScreen({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCropVisible, setIsCropVisible] = useState(false);
   const [isEraserVisible, setIsEraserVisible] = useState(false);
-  const { colorOptions, customColorOptions, setCustomColorOptions } = useColorPaletteOptions();
+  const { colorOptions } = useColorPaletteOptions();
+  const { categoryOptions } = useCategoryOptions();
+  const keyboardHeight = useKeyboardHeight();
   const hasDraft =
     imageUri !== item.localImagePath ||
     name !== item.name ||
@@ -253,7 +256,7 @@ export function ClothingDetailScreen({
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
         <View style={styles.header}>
@@ -275,7 +278,12 @@ export function ClothingDetailScreen({
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: 32 + keyboardHeight }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+        >
           <View style={styles.previewArea}>
             <Image source={{ uri: imageUri }} style={styles.previewImage} />
           </View>
@@ -326,7 +334,7 @@ export function ClothingDetailScreen({
           <View style={styles.formGroup}>
             <Text style={styles.label}>카테고리</Text>
             <View style={styles.chipWrap}>
-              {CLOTHING_CATEGORIES.map((option) => (
+              {categoryOptions.map((option) => (
                 <ChoiceChip
                   key={option}
                   label={option}
@@ -355,8 +363,7 @@ export function ClothingDetailScreen({
             <Text style={styles.label}>대표색</Text>
             <ColorPalettePicker
               selectedColor={color}
-              customColorOptions={customColorOptions}
-              onCustomColorOptionsChange={setCustomColorOptions}
+              colorOptions={colorOptions}
               onSelectColor={selectColorOption}
               suggestedColorOption={suggestedColorOption}
               extractedColorHex={extractedColorHex}

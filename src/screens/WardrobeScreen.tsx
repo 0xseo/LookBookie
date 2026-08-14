@@ -14,11 +14,26 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
-import type { CategoryFilter, ClothingItem } from "../types/clothing";
-import { CATEGORY_FILTERS } from "../types/clothing";
+import {
+  SEASONS,
+  type CategoryFilter,
+  type ClothingItem,
+  type Season,
+} from "../types/clothing";
+import { useCategoryOptions } from "../hooks/useCategoryOptions";
 import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
 import { clothingMatchesSearch } from "../services/colorSearch";
-import { CloudCheck, CloudAlert } from "lucide-react-native";
+import {
+  ArrowDownAZ,
+  CalendarArrowDown,
+  CalendarArrowUp,
+  Check,
+  CloudAlert,
+  CloudCheck,
+  Plus,
+  RotateCcw,
+  SlidersHorizontal,
+} from "lucide-react-native";
 
 type WardrobeScreenProps = {
   items: ClothingItem[];
@@ -35,6 +50,19 @@ const GRID_COLUMNS = 3;
 const GRID_GAP = 8;
 const SIDE_PADDING = 16;
 
+type WardrobeSort = "createdDesc" | "createdAsc" | "nameAsc";
+type ToolbarPanel = "sort" | "filter" | null;
+
+const SORT_OPTIONS: Array<{
+  value: WardrobeSort;
+  label: string;
+  Icon: typeof CalendarArrowDown;
+}> = [
+  { value: "createdDesc", label: "최신순", Icon: CalendarArrowDown },
+  { value: "createdAsc", label: "오래된순", Icon: CalendarArrowUp },
+  { value: "nameAsc", label: "이름순", Icon: ArrowDownAZ },
+];
+
 export function WardrobeScreen({
   items,
   selectedCategory,
@@ -47,7 +75,13 @@ export function WardrobeScreen({
 }: WardrobeScreenProps) {
   const { width } = useWindowDimensions();
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortOrder, setSortOrder] = useState<WardrobeSort>("createdDesc");
+  const [toolbarPanel, setToolbarPanel] = useState<ToolbarPanel>(null);
+  const [selectedSeasons, setSelectedSeasons] = useState<Season[]>([]);
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const { colorOptions } = useColorPaletteOptions();
+  const { categoryOptions } = useCategoryOptions();
+  const categoryFilters: CategoryFilter[] = ["전체", ...categoryOptions];
 
   const tileSize = useMemo(() => {
     const availableWidth =
@@ -56,10 +90,62 @@ export function WardrobeScreen({
     return Math.floor(availableWidth / GRID_COLUMNS);
   }, [width]);
   const visibleItems = useMemo(() => {
-    return items.filter((item) =>
-      clothingMatchesSearch(item, searchQuery, colorOptions)
+    return items
+      .filter((item) => {
+        const matchesSeason =
+          selectedSeasons.length === 0 ||
+          selectedSeasons.some((season) => item.seasons.includes(season));
+        const matchesColor =
+          selectedColors.length === 0 || selectedColors.includes(item.color);
+
+        return (
+          matchesSeason &&
+          matchesColor &&
+          clothingMatchesSearch(item, searchQuery, colorOptions)
+        );
+      })
+      .sort((left, right) => {
+        if (sortOrder === "nameAsc") {
+          return getItemSortName(left).localeCompare(getItemSortName(right), "ko");
+        }
+
+        const createdDifference =
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+
+        return sortOrder === "createdAsc" ? createdDifference : -createdDifference;
+      });
+  }, [
+    colorOptions,
+    items,
+    searchQuery,
+    selectedColors,
+    selectedSeasons,
+    sortOrder,
+  ]);
+  const activeFilterCount = selectedSeasons.length + selectedColors.length;
+  const selectedSortLabel =
+    SORT_OPTIONS.find((option) => option.value === sortOrder)?.label ?? "최신순";
+
+  const toggleSeason = (season: Season) => {
+    setSelectedSeasons((current) =>
+      current.includes(season)
+        ? current.filter((value) => value !== season)
+        : [...current, season]
     );
-  }, [colorOptions, items, searchQuery]);
+  };
+
+  const toggleColor = (label: string) => {
+    setSelectedColors((current) =>
+      current.includes(label)
+        ? current.filter((value) => value !== label)
+        : [...current, label]
+    );
+  };
+
+  const resetFilters = () => {
+    setSelectedSeasons([]);
+    setSelectedColors([]);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -91,13 +177,135 @@ export function WardrobeScreen({
           />
         </View>
 
+        <View style={styles.toolbar}>
+          <Pressable
+            onPress={() => setToolbarPanel((current) => (current === "sort" ? null : "sort"))}
+            style={[
+              styles.toolbarButton,
+              toolbarPanel === "sort" && styles.toolbarButtonActive,
+            ]}
+            hitSlop={8}
+          >
+            <ArrowDownAZ color={COLORS.primary} size={18} strokeWidth={2.2} />
+            <Text style={styles.toolbarButtonText}>{selectedSortLabel}</Text>
+          </Pressable>
+          <Pressable
+            onPress={() =>
+              setToolbarPanel((current) => (current === "filter" ? null : "filter"))
+            }
+            style={[
+              styles.toolbarButton,
+              (toolbarPanel === "filter" || activeFilterCount > 0) &&
+                styles.toolbarButtonActive,
+            ]}
+            hitSlop={8}
+          >
+            <SlidersHorizontal color={COLORS.primary} size={18} strokeWidth={2.2} />
+            <Text style={styles.toolbarButtonText}>필터</Text>
+            {activeFilterCount > 0 ? (
+              <View style={styles.filterCountBadge}>
+                <Text style={styles.filterCountText}>{activeFilterCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        </View>
+
+        {toolbarPanel === "sort" ? (
+          <View style={styles.controlPanel}>
+            <Text style={styles.controlTitle}>정렬</Text>
+            <View style={styles.sortOptions}>
+              {SORT_OPTIONS.map((option) => {
+                const selected = sortOrder === option.value;
+                const Icon = option.Icon;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => {
+                      setSortOrder(option.value);
+                      setToolbarPanel(null);
+                    }}
+                    style={[styles.sortOption, selected && styles.sortOptionSelected]}
+                    hitSlop={8}
+                  >
+                    <Icon
+                      color={selected ? COLORS.primary : COLORS.textSecondary}
+                      size={18}
+                      strokeWidth={2.2}
+                    />
+                    <Text style={[styles.sortOptionText, selected && styles.sortOptionTextSelected]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {toolbarPanel === "filter" ? (
+          <View style={styles.controlPanel}>
+            <View style={styles.controlHeadingRow}>
+              <Text style={styles.controlTitle}>필터</Text>
+              {activeFilterCount > 0 ? (
+                <Pressable onPress={resetFilters} style={styles.resetButton} hitSlop={8}>
+                  <RotateCcw color={COLORS.textSecondary} size={16} strokeWidth={2.2} />
+                  <Text style={styles.resetButtonText}>초기화</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={styles.filterLabel}>계절</Text>
+            <View style={styles.filterChipRow}>
+              {SEASONS.map((season) => {
+                const selected = selectedSeasons.includes(season);
+
+                return (
+                  <Pressable
+                    key={season}
+                    onPress={() => toggleSeason(season)}
+                    style={[styles.filterChip, selected && styles.filterChipSelected]}
+                    hitSlop={8}
+                  >
+                    <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>
+                      {season}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.filterLabel}>색상</Text>
+            <View style={styles.colorFilters}>
+              {colorOptions.map((option) => {
+                const selected = selectedColors.includes(option.label);
+
+                return (
+                  <Pressable
+                    key={option.label}
+                    onPress={() => toggleColor(option.label)}
+                    style={[styles.colorFilterButton, selected && styles.colorFilterButtonSelected]}
+                    accessibilityLabel={option.label}
+                    accessibilityState={{ selected }}
+                    hitSlop={6}
+                  >
+                    <View style={[styles.colorFilterSwatch, { backgroundColor: option.value }]}>
+                      {selected ? (
+                        <Check color={COLORS.primary} size={16} strokeWidth={3} />
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.filterScroll}
           contentContainerStyle={styles.filterContent}
         >
-          {CATEGORY_FILTERS.map((category) => {
+          {categoryFilters.map((category) => {
             const isSelected = selectedCategory === category;
 
             return (
@@ -131,6 +339,8 @@ export function WardrobeScreen({
         ) : (
           <FlatList
             data={visibleItems}
+            refreshing={isLoading}
+            onRefresh={onRefresh}
             keyExtractor={(item) => String(item.id)}
             numColumns={GRID_COLUMNS}
             columnWrapperStyle={styles.gridRow}
@@ -174,7 +384,7 @@ export function WardrobeScreen({
           accessibilityLabel="옷 추가"
           hitSlop={8}
         >
-          <Text style={styles.fabText}>+</Text>
+          <Plus color={COLORS.surface} size={28} strokeWidth={2.6} />
         </Pressable>
       </View>
     </SafeAreaView>
@@ -193,6 +403,10 @@ function SyncStatusBadge({ status }: { status: ClothingItem["cloudSyncStatus"] }
       )}
     </View>
   );
+}
+
+function getItemSortName(item: ClothingItem) {
+  return (item.name || item.brand || item.category).trim();
 }
 
 function getSyncText(status: ClothingItem["cloudSyncStatus"]) {
@@ -289,13 +503,171 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     color: COLORS.textPrimary,
   },
+  toolbar: {
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    gap: 8,
+  },
+  toolbarButton: {
+    minHeight: 40,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  toolbarButtonActive: {
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.secondary,
+  },
+  toolbarButtonText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
+  },
+  filterCountBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+  },
+  filterCountText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.surface,
+  },
+  controlPanel: {
+    marginHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+    gap: 10,
+  },
+  controlHeadingRow: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  controlTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  sortOptions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  sortOption: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 5,
+  },
+  sortOptionSelected: {
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.secondary,
+  },
+  sortOptionText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  sortOptionTextSelected: {
+    color: COLORS.primary,
+  },
+  resetButton: {
+    minHeight: 32,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  resetButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  filterChipRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  filterChip: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterChipSelected: {
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.secondary,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  filterChipTextSelected: {
+    color: COLORS.primary,
+  },
+  colorFilters: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  colorFilterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: COLORS.transparent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorFilterButtonSelected: {
+    borderColor: COLORS.primary,
+  },
+  colorFilterSwatch: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   filterContent: {
     paddingHorizontal: 16,
-    paddingVertical: 4,
+    paddingTop: 4,
+    paddingBottom: 6,
     gap: 6,
   },
   filterScroll: {
-    maxHeight: 46,
+    height: 48,
+    flexGrow: 0,
   },
   categoryChip: {
     minHeight: 34,
@@ -353,6 +725,7 @@ const styles = StyleSheet.create({
   itemImageFrame: {
     width: "100%",
     aspectRatio: 1,
+    padding: 6,
     backgroundColor: COLORS.surface,
   },
   itemImage: {
@@ -435,11 +808,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.primary,
-  },
-  fabText: {
-    fontSize: 30,
-    fontWeight: "700",
-    textAlign: "center",
-    color: COLORS.surface,
   },
 });

@@ -38,12 +38,16 @@ type ClothingRow = {
 
 type OutfitRow = {
   id: number;
+  remote_record_id: string | null;
   name: string;
   seasons: string | null;
   stickers: string;
   canvas_width: number | null;
   canvas_height: number | null;
   created_at: string;
+  cloud_sync_status: CloudSyncStatus | null;
+  cloud_error: string | null;
+  synced_at: string | null;
 };
 
 type TableColumn = {
@@ -95,6 +99,10 @@ export async function initDatabase() {
   await ensureColumn(db, 'outfits', 'canvas_width', 'REAL');
   await ensureColumn(db, 'outfits', 'canvas_height', 'REAL');
   await ensureColumn(db, 'outfits', 'seasons', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, 'outfits', 'remote_record_id', 'TEXT');
+  await ensureColumn(db, 'outfits', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
+  await ensureColumn(db, 'outfits', 'cloud_error', 'TEXT');
+  await ensureColumn(db, 'outfits', 'synced_at', 'DATETIME');
 }
 
 export async function insertClothingItem(item: NewClothingItem) {
@@ -178,6 +186,30 @@ export async function deleteClothingItem(id: number) {
   await db.runAsync('DELETE FROM clothes WHERE id = ?', id);
 }
 
+export async function renameClothingCategory(
+  currentCategory: ClothingCategory,
+  nextCategory: ClothingCategory,
+) {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `UPDATE clothes
+     SET category = ?,
+         cloud_sync_status = CASE
+           WHEN remote_record_id IS NOT NULL THEN 'pending'
+           ELSE cloud_sync_status
+         END,
+         cloud_error = NULL,
+         synced_at = CASE
+           WHEN remote_record_id IS NOT NULL THEN NULL
+           ELSE synced_at
+         END
+     WHERE category = ?`,
+    nextCategory,
+    currentCategory,
+  );
+}
+
 export async function listClothingItems(filter: CategoryFilter) {
   const db = await getDatabase();
 
@@ -197,27 +229,87 @@ export async function listClothingItems(filter: CategoryFilter) {
 export async function insertOutfit(outfit: NewOutfit) {
   const db = await getDatabase();
 
-  await db.runAsync(
-    'INSERT INTO outfits (name, seasons, stickers, canvas_width, canvas_height) VALUES (?, ?, ?, ?, ?)',
+  const result = await db.runAsync(
+    `INSERT INTO outfits (
+      remote_record_id,
+      name,
+      seasons,
+      stickers,
+      canvas_width,
+      canvas_height,
+      cloud_sync_status,
+      cloud_error,
+      synced_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    outfit.remoteRecordId ?? null,
     outfit.name,
     JSON.stringify(outfit.seasons),
     JSON.stringify(outfit.stickers),
     outfit.canvasWidth ?? null,
     outfit.canvasHeight ?? null,
+    outfit.cloudSyncStatus ?? 'local',
+    outfit.cloudError ?? null,
+    outfit.syncedAt ?? null,
   );
+
+  return result.lastInsertRowId;
 }
 
 export async function updateOutfit(outfit: Outfit) {
   const db = await getDatabase();
 
-  await db.runAsync(
-    'UPDATE outfits SET name = ?, seasons = ?, stickers = ?, canvas_width = ?, canvas_height = ? WHERE id = ?',
+  const result = await db.runAsync(
+    `UPDATE outfits
+     SET remote_record_id = ?,
+         name = ?,
+         seasons = ?,
+         stickers = ?,
+         canvas_width = ?,
+         canvas_height = ?,
+         cloud_sync_status = ?,
+         cloud_error = ?,
+         synced_at = ?
+     WHERE id = ?`,
+    outfit.remoteRecordId,
     outfit.name,
     JSON.stringify(outfit.seasons),
     JSON.stringify(outfit.stickers),
     outfit.canvasWidth ?? null,
     outfit.canvasHeight ?? null,
+    outfit.cloudSyncStatus,
+    outfit.cloudError,
+    outfit.syncedAt,
     outfit.id,
+  );
+
+  if (result.changes !== 1) {
+    throw new Error('수정할 로컬 코디를 찾지 못했어요.');
+  }
+}
+
+export async function updateOutfitCloudState(
+  id: number,
+  fields: {
+    remoteRecordId: string | null;
+    cloudSyncStatus: CloudSyncStatus;
+    cloudError: string | null;
+    syncedAt: string | null;
+  },
+) {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `UPDATE outfits
+     SET remote_record_id = ?,
+         cloud_sync_status = ?,
+         cloud_error = ?,
+         synced_at = ?
+     WHERE id = ?`,
+    fields.remoteRecordId,
+    fields.cloudSyncStatus,
+    fields.cloudError,
+    fields.syncedAt,
+    id,
   );
 }
 
@@ -225,6 +317,14 @@ export async function deleteOutfit(id: number) {
   const db = await getDatabase();
 
   await db.runAsync('DELETE FROM outfits WHERE id = ?', id);
+  const remaining = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM outfits WHERE id = ?',
+    id,
+  );
+
+  if ((remaining?.count ?? 0) > 0) {
+    throw new Error('로컬 코디 삭제가 확인되지 않았어요.');
+  }
 }
 
 export async function listOutfits() {
@@ -321,11 +421,15 @@ export async function importLocalBackupPayload(
 
   for (const outfit of payload.outfits) {
     await insertOutfit({
+      remoteRecordId: outfit.remoteRecordId ?? null,
       name: outfit.name,
       seasons: outfit.seasons ?? [],
       stickers: outfit.stickers,
       canvasWidth: outfit.canvasWidth,
       canvasHeight: outfit.canvasHeight,
+      cloudSyncStatus: outfit.remoteRecordId ? 'pending' : 'local',
+      cloudError: null,
+      syncedAt: null,
     });
     outfitsCount += 1;
   }
@@ -400,12 +504,16 @@ function parseSeasons(value: string | null): Season[] {
 function mapOutfitRow(row: OutfitRow): Outfit {
   return {
     id: row.id,
+    remoteRecordId: row.remote_record_id ?? null,
     name: row.name,
     seasons: parseSeasons(row.seasons),
     stickers: parseStickers(row.stickers),
     canvasWidth: row.canvas_width ?? null,
     canvasHeight: row.canvas_height ?? null,
     createdAt: row.created_at,
+    cloudSyncStatus: row.cloud_sync_status ?? 'local',
+    cloudError: row.cloud_error ?? null,
+    syncedAt: row.synced_at ?? null,
   };
 }
 

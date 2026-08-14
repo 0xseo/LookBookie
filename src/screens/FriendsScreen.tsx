@@ -1,26 +1,41 @@
-import { useState } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Turtle,
+} from "lucide-react-native";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   useWindowDimensions,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { COLORS } from '../../constants/colors';
+import { COLORS } from "../../constants/colors";
+import { useCategoryOptions } from "../hooks/useCategoryOptions";
+import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
+import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
+import { getColorSearchTerms } from "../services/colorSearch";
 import type {
   FriendOutfit,
   FriendOutfitSticker,
   FriendProfile,
   FriendRequest,
   FriendWardrobeItem,
-} from '../types/friends';
+} from "../types/friends";
+import type { CategoryFilter, ColorOption } from "../types/clothing";
 
 type FriendsScreenProps = {
   isCloudConfigured: boolean;
@@ -37,11 +52,14 @@ type FriendsScreenProps = {
   onAcceptFriendRequest: (request: FriendRequest) => Promise<void>;
   onDeclineFriendRequest: (request: FriendRequest) => Promise<void>;
   onSelectFriend: (friend: FriendProfile) => Promise<void>;
+  onCloseFriend: () => void;
+  onRefresh: () => Promise<void>;
   onOpenProfile: () => void;
 };
 
-type FriendViewMode = 'wardrobe' | 'outfits';
+type FriendViewMode = "wardrobe" | "outfits";
 
+const GRID_COLUMNS = 3;
 const GRID_GAP = 8;
 const SIDE_PADDING = 16;
 
@@ -60,81 +78,401 @@ export function FriendsScreen({
   onAcceptFriendRequest,
   onDeclineFriendRequest,
   onSelectFriend,
+  onCloseFriend,
+  onRefresh,
   onOpenProfile,
 }: FriendsScreenProps) {
   const { width } = useWindowDimensions();
-  const [friendEmail, setFriendEmail] = useState('');
-  const [mode, setMode] = useState<FriendViewMode>('wardrobe');
-  const tileSize = Math.floor((width - SIDE_PADDING * 2 - GRID_GAP * 2) / 3);
+  const [friendEmail, setFriendEmail] = useState("");
+  const [mode, setMode] = useState<FriendViewMode>("wardrobe");
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] =
+    useState<CategoryFilter>("전체");
+  const { colorOptions } = useColorPaletteOptions();
+  const { categoryOptions } = useCategoryOptions();
+  const keyboardHeight = useKeyboardHeight();
+  const categoryFilters: CategoryFilter[] = [
+    "전체",
+    ...Array.from(
+      new Set([
+        ...categoryOptions,
+        ...friendWardrobeItems.map((item) => item.category),
+      ])
+    ),
+  ];
+  const tileSize = Math.floor(
+    (width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
+  );
+  const visibleWardrobeItems = useMemo(
+    () =>
+      friendWardrobeItems.filter((item) => {
+        const categoryMatches =
+          selectedCategory === "전체" || item.category === selectedCategory;
+
+        return (
+          categoryMatches &&
+          friendWardrobeMatchesSearch(item, searchQuery, colorOptions)
+        );
+      }),
+    [colorOptions, friendWardrobeItems, searchQuery, selectedCategory]
+  );
+  const visibleOutfits = useMemo(
+    () =>
+      friendOutfits.filter((outfit) =>
+        friendOutfitMatchesSearch(outfit, searchQuery, colorOptions)
+      ),
+    [colorOptions, friendOutfits, searchQuery]
+  );
 
   const submitFriend = async () => {
     if (!friendEmail.trim()) {
-      Alert.alert('친구 이메일이 필요해북', '추가할 친구의 이메일을 입력해 주세요.');
+      Alert.alert(
+        "친구 이메일이 필요해북",
+        "추가할 친구의 이메일을 입력해 주세요."
+      );
       return;
     }
 
     await onSendFriendRequest(friendEmail.trim());
-    setFriendEmail('');
+    setFriendEmail("");
   };
+
+  const openFriend = async (friend: FriendProfile) => {
+    setMode("wardrobe");
+    setSearchQuery("");
+    setSelectedCategory("전체");
+    await onSelectFriend(friend);
+    setDetailVisible(true);
+  };
+
+  const refreshFriends = async () => {
+    setIsRefreshing(true);
+
+    try {
+      await onRefresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const closeFriend = () => {
+    setDetailVisible(false);
+    onCloseFriend();
+  };
+
+  useEffect(() => {
+    if (!detailVisible) {
+      return;
+    }
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        closeFriend();
+        return true;
+      }
+    );
+
+    return () => subscription.remove();
+  }, [detailVisible, onCloseFriend]);
+
+  if (detailVisible && selectedFriend) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={styles.detailHeader}>
+            <Pressable
+              onPress={closeFriend}
+              style={styles.backButton}
+              accessibilityLabel="친구 목록으로"
+              hitSlop={8}
+            >
+              <ChevronLeft
+                color={COLORS.textPrimary}
+                size={24}
+                strokeWidth={2.2}
+              />
+            </Pressable>
+            <View style={styles.detailAvatar}>
+              <Turtle color={COLORS.primary} size={22} strokeWidth={2.2} />
+            </View>
+            <View style={styles.detailTitleGroup}>
+              <Text style={styles.detailTitle} numberOfLines={1}>
+                {selectedFriend.displayName ?? selectedFriend.email}
+              </Text>
+              <Text style={styles.caption} numberOfLines={1}>
+                {selectedFriend.email}
+              </Text>
+            </View>
+            <Pressable
+              onPress={refreshFriends}
+              style={styles.mascotSlot}
+              accessibilityLabel="친구 데이터 새로고침"
+              hitSlop={8}
+            >
+              {isFriendBusy || isRefreshing ? (
+                <ActivityIndicator color={COLORS.primary} />
+              ) : (
+                <RefreshCw color={COLORS.primary} size={22} strokeWidth={2.2} />
+              )}
+            </Pressable>
+          </View>
+
+          <View style={styles.segmentedControl}>
+            <ModeButton
+              label="옷장"
+              selected={mode === "wardrobe"}
+              onPress={() => {
+                setMode("wardrobe");
+                setSearchQuery("");
+              }}
+            />
+            <ModeButton
+              label="코디북"
+              selected={mode === "outfits"}
+              onPress={() => {
+                setMode("outfits");
+                setSearchQuery("");
+              }}
+            />
+          </View>
+
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={[
+              styles.detailContent,
+              { paddingBottom: bottomInset + 24 + keyboardHeight },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets
+            refreshControl={
+              <RefreshControl
+                refreshing={isFriendBusy || isRefreshing}
+                onRefresh={refreshFriends}
+                tintColor={COLORS.primary}
+                colors={[COLORS.primary]}
+              />
+            }
+          >
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder={
+                mode === "wardrobe"
+                  ? "이름, 브랜드, 계절, 색 검색"
+                  : "코디 이름, 계절, 옷 정보 검색"
+              }
+              placeholderTextColor={COLORS.textSecondary}
+              style={styles.searchInput}
+              returnKeyType="search"
+            />
+
+            {mode === "wardrobe" ? (
+              <>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.filterScroll}
+                  contentContainerStyle={styles.filterContent}
+                >
+                  {categoryFilters.map((category) => {
+                    const selected = selectedCategory === category;
+
+                    return (
+                      <Pressable
+                        key={category}
+                        onPress={() => setSelectedCategory(category)}
+                        style={[
+                          styles.categoryChip,
+                          selected && styles.categoryChipSelected,
+                        ]}
+                        hitSlop={8}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryChipText,
+                            selected && styles.categoryChipTextSelected,
+                          ]}
+                        >
+                          {category}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+                {visibleWardrobeItems.length > 0 ? (
+                  <View style={styles.grid}>
+                    {visibleWardrobeItems.map((item) => (
+                      <View
+                        key={item.id}
+                        style={[styles.wardrobeCard, { width: tileSize }]}
+                      >
+                        <View style={styles.imageFrame}>
+                          <Image
+                            source={{ uri: item.remoteImageUrl }}
+                            style={styles.cardImage}
+                          />
+                        </View>
+                        <View style={styles.cardLabelRow}>
+                          <Text style={styles.cardLabel} numberOfLines={1}>
+                            {item.brand || item.name || item.category}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <EmptyState
+                    text={
+                      searchQuery
+                        ? "검색 결과가 없어북"
+                        : "친구 옷장이 비어있어북"
+                    }
+                  />
+                )}
+              </>
+            ) : visibleOutfits.length > 0 ? (
+              <View style={styles.grid}>
+                {visibleOutfits.map((outfit) => (
+                  <View
+                    key={outfit.id}
+                    style={[styles.outfitCard, { width: tileSize }]}
+                  >
+                    <FriendOutfitPreview
+                      stickers={outfit.stickers}
+                      canvasWidth={outfit.canvasWidth}
+                      canvasHeight={outfit.canvasHeight}
+                      previewSize={tileSize}
+                    />
+                    <View style={styles.outfitLabelRow}>
+                      <Text style={styles.outfitName} numberOfLines={1}>
+                        {outfit.name}
+                      </Text>
+                      <Text style={styles.outfitMeta}>
+                        {outfit.stickers.length}개
+                      </Text>
+                      {outfit.seasons.length > 0 ? (
+                        <Text style={styles.outfitSeasons} numberOfLines={1}>
+                          {outfit.seasons.join(" · ")}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <EmptyState
+                text={
+                  searchQuery
+                    ? "검색 결과가 없어북"
+                    : "친구 코디북이 비어있어북"
+                }
+              />
+            )}
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[styles.container, { paddingBottom: bottomInset + 24 }]}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>친구</Text>
-          <Text style={styles.caption}>친구 옷장과 코디북을 살펴봐요</Text>
-        </View>
-
-        {!isCloudConfigured ? (
-          <View style={styles.panel}>
-            <Text style={styles.sectionTitle}>클라우드 설정 필요</Text>
-            <Text style={styles.panelText}>
-              친구 기능은 Supabase 설정이 있어야 사용할 수 있어요.
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.container,
+            { paddingBottom: bottomInset + 24 + keyboardHeight },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
+          refreshControl={
+            <RefreshControl
+              refreshing={isFriendBusy || isRefreshing}
+              onRefresh={refreshFriends}
+              tintColor={COLORS.primary}
+              colors={[COLORS.primary]}
+            />
+          }
+        >
+          <View style={styles.header}>
+            <Text style={styles.title}>친구</Text>
+            <Text style={styles.caption}>
+              친구를 눌러 옷장과 코디북을 살펴봐요
             </Text>
           </View>
-        ) : !cloudEmail ? (
-          <View style={styles.panel}>
-            <Text style={styles.sectionTitle}>로그인이 필요해북</Text>
-            <Text style={styles.panelText}>친구 옷장은 로그인한 계정끼리 연결돼요.</Text>
-            <Pressable onPress={onOpenProfile} style={styles.primaryButton} hitSlop={8}>
-              <Text style={styles.primaryButtonText}>마이페이지로</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <>
-            <View style={styles.panel}>
-              <Text style={styles.sectionTitle}>친구 요청</Text>
-              <View style={styles.friendInputRow}>
-                <TextInput
-                  value={friendEmail}
-                  onChangeText={setFriendEmail}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  placeholder="친구 이메일"
-                  placeholderTextColor={COLORS.textSecondary}
-                  style={styles.input}
-                />
-                <Pressable
-                  onPress={submitFriend}
-                  disabled={isFriendBusy}
-                  style={[styles.addFriendButton, isFriendBusy && styles.disabledButton]}
-                  hitSlop={8}
-                >
-                  <Text style={styles.primaryButtonText}>요청</Text>
-                </Pressable>
-              </View>
-            </View>
 
-            {incomingFriendRequests.length > 0 ? (
+          {!isCloudConfigured ? (
+            <View style={styles.panel}>
+              <Text style={styles.sectionTitle}>클라우드 설정 필요</Text>
+              <Text style={styles.panelText}>
+                친구 기능은 Supabase 설정이 있어야 사용할 수 있어요.
+              </Text>
+            </View>
+          ) : !cloudEmail ? (
+            <View style={styles.panel}>
+              <Text style={styles.sectionTitle}>로그인이 필요해북</Text>
+              <Text style={styles.panelText}>
+                친구 옷장은 로그인한 계정끼리 연결돼요.
+              </Text>
+              <Pressable
+                onPress={onOpenProfile}
+                style={styles.primaryButton}
+                hitSlop={8}
+              >
+                <Text style={styles.primaryButtonText}>마이페이지로</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
               <View style={styles.panel}>
-                <Text style={styles.sectionTitle}>받은 요청</Text>
-                <View style={styles.requestList}>
+                <Text style={styles.sectionTitle}>친구 요청</Text>
+                <View style={styles.friendInputRow}>
+                  <TextInput
+                    value={friendEmail}
+                    onChangeText={setFriendEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    placeholder="친구 이메일"
+                    placeholderTextColor={COLORS.textSecondary}
+                    style={styles.input}
+                  />
+                  <Pressable
+                    onPress={submitFriend}
+                    disabled={isFriendBusy}
+                    style={[
+                      styles.addFriendButton,
+                      isFriendBusy && styles.disabledButton,
+                    ]}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.primaryButtonText}>요청</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              {incomingFriendRequests.length > 0 ? (
+                <View style={styles.panel}>
+                  <Text style={styles.sectionTitle}>받은 요청</Text>
                   {incomingFriendRequests.map((request) => (
                     <View key={request.friendshipId} style={styles.requestRow}>
+                      <View style={styles.friendAvatar}>
+                        <Turtle
+                          color={COLORS.primary}
+                          size={21}
+                          strokeWidth={2.2}
+                        />
+                      </View>
                       <View style={styles.requestTextGroup}>
                         <Text style={styles.requestName}>
                           {request.displayName ?? request.email}
@@ -160,164 +498,140 @@ export function FriendsScreen({
                     </View>
                   ))}
                 </View>
-              </View>
-            ) : null}
+              ) : null}
 
-            {outgoingFriendRequests.length > 0 ? (
-              <View style={styles.panel}>
-                <Text style={styles.sectionTitle}>보낸 요청</Text>
-                <View style={styles.friendList}>
+              {outgoingFriendRequests.length > 0 ? (
+                <View style={styles.panel}>
+                  <Text style={styles.sectionTitle}>보낸 요청</Text>
                   {outgoingFriendRequests.map((request) => (
-                    <View key={request.friendshipId} style={styles.pendingChip}>
-                      <Text style={styles.pendingChipText}>
+                    <View key={request.friendshipId} style={styles.pendingRow}>
+                      <View style={styles.friendAvatar}>
+                        <Turtle
+                          color={COLORS.primary}
+                          size={21}
+                          strokeWidth={2.2}
+                        />
+                      </View>
+                      <Text style={styles.pendingName}>
                         {request.displayName ?? request.email}
                       </Text>
                       <Text style={styles.pendingBadge}>대기</Text>
                     </View>
                   ))}
                 </View>
-              </View>
-            ) : null}
+              ) : null}
 
-            <View style={styles.panel}>
-              <Text style={styles.sectionTitle}>친구 목록</Text>
-              {friends.length > 0 ? (
-                <View style={styles.friendList}>
-                  {friends.map((friend) => {
-                    const selected = selectedFriend?.id === friend.id;
-
-                    return (
+              <View style={styles.friendSection}>
+                <Text style={styles.sectionTitle}>친구 목록</Text>
+                {friends.length > 0 ? (
+                  <View style={styles.friendList}>
+                    {friends.map((friend) => (
                       <Pressable
                         key={friend.id}
-                        onPress={() => onSelectFriend(friend)}
-                        style={[styles.friendChip, selected && styles.friendChipSelected]}
+                        onPress={() => openFriend(friend)}
+                        style={styles.friendRow}
                         hitSlop={8}
                       >
-                        <Text
-                          style={[styles.friendChipText, selected && styles.friendChipTextSelected]}
-                        >
-                          {friend.displayName ?? friend.email}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : (
-                <Text style={styles.panelText}>아직 추가한 친구가 없어북.</Text>
-              )}
-            </View>
-
-            {selectedFriend ? (
-              <View style={styles.panel}>
-                <View style={styles.panelHeader}>
-                  <View>
-                    <Text style={styles.sectionTitle}>
-                      {selectedFriend.displayName ?? selectedFriend.email}
-                    </Text>
-                    <Text style={styles.panelCaption}>{selectedFriend.email}</Text>
-                  </View>
-                  {isFriendBusy ? <ActivityIndicator color={COLORS.primary} /> : null}
-                </View>
-
-                <View style={styles.segmentedControl}>
-                  <ModeButton
-                    label="옷장"
-                    selected={mode === 'wardrobe'}
-                    onPress={() => setMode('wardrobe')}
-                  />
-                  <ModeButton
-                    label="코디북"
-                    selected={mode === 'outfits'}
-                    onPress={() => setMode('outfits')}
-                  />
-                </View>
-
-                {mode === 'wardrobe' ? (
-                  <View style={styles.grid}>
-                    {friendWardrobeItems.length === 0 ? (
-                      <Text style={styles.panelText}>친구 옷장이 아직 비어있어북.</Text>
-                    ) : (
-                      friendWardrobeItems.map((item) => (
-                        <View key={item.id} style={[styles.wardrobeTile, { width: tileSize }]}>
-                          <View style={styles.wardrobeImageFrame}>
-                            <Image
-                              source={{ uri: item.remoteImageUrl }}
-                              style={styles.wardrobeImage}
-                            />
-                          </View>
-                          <Text style={styles.tileText} numberOfLines={1}>
-                            {item.brand || item.name || item.category}
+                        <View style={styles.friendAvatar}>
+                          <Turtle
+                            color={COLORS.primary}
+                            size={22}
+                            strokeWidth={2.2}
+                          />
+                        </View>
+                        <View style={styles.friendTextGroup}>
+                          <Text style={styles.friendName}>
+                            {friend.displayName ?? friend.email}
+                          </Text>
+                          <Text style={styles.panelCaption}>
+                            {friend.email}
                           </Text>
                         </View>
-                      ))
-                    )}
+                        <ChevronRight
+                          color={COLORS.textSecondary}
+                          size={20}
+                          strokeWidth={2}
+                        />
+                      </Pressable>
+                    ))}
                   </View>
                 ) : (
-                  <View style={styles.outfitList}>
-                    {friendOutfits.length === 0 ? (
-                      <Text style={styles.panelText}>친구 코디북이 아직 비어있어북.</Text>
-                    ) : (
-                      friendOutfits.map((outfit) => (
-                        <View key={outfit.id} style={styles.outfitCard}>
-                          <FriendOutfitPreview
-                            stickers={outfit.stickers}
-                            canvasWidth={outfit.canvasWidth}
-                            canvasHeight={outfit.canvasHeight}
-                          />
-                          <View style={styles.outfitLabel}>
-                            <Text style={styles.outfitName}>{outfit.name}</Text>
-                            {outfit.seasons.length > 0 ? (
-                              <Text style={styles.outfitSeasons}>{outfit.seasons.join(' · ')}</Text>
-                            ) : null}
-                          </View>
-                        </View>
-                      ))
-                    )}
-                  </View>
+                  <Text style={styles.panelText}>
+                    아직 추가한 친구가 없어북.
+                  </Text>
                 )}
               </View>
-            ) : null}
-          </>
-        )}
-      </ScrollView>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-type ModeButtonProps = {
+function ModeButton({
+  label,
+  selected,
+  onPress,
+}: {
   label: string;
   selected: boolean;
   onPress: () => void;
-};
-
-function ModeButton({ label, selected, onPress }: ModeButtonProps) {
+}) {
   return (
     <Pressable
       onPress={onPress}
       style={[styles.modeButton, selected && styles.modeButtonSelected]}
       hitSlop={8}
     >
-      <Text style={[styles.modeButtonText, selected && styles.modeButtonTextSelected]}>{label}</Text>
+      <Text
+        style={[
+          styles.modeButtonText,
+          selected && styles.modeButtonTextSelected,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
-type FriendOutfitPreviewProps = {
-  stickers: FriendOutfitSticker[];
-  canvasWidth: number | null;
-  canvasHeight: number | null;
-};
+function EmptyState({ text }: { text: string }) {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyMascot}>🐢</Text>
+      <View style={styles.speechBubble}>
+        <Text style={styles.emptyText}>{text}</Text>
+      </View>
+    </View>
+  );
+}
 
 function FriendOutfitPreview({
   stickers,
   canvasWidth,
   canvasHeight,
-}: FriendOutfitPreviewProps) {
-  const previewSize = 148;
-  const layout = getFriendPreviewLayout(stickers, canvasWidth, canvasHeight, previewSize);
+  previewSize,
+}: {
+  stickers: FriendOutfitSticker[];
+  canvasWidth: number | null;
+  canvasHeight: number | null;
+  previewSize: number;
+}) {
+  const layout = getFriendPreviewLayout(
+    stickers,
+    canvasWidth,
+    canvasHeight,
+    previewSize
+  );
 
   return (
-    <View style={[styles.outfitPreview, { width: previewSize, alignSelf: 'center' }]}>
+    <View
+      style={[
+        styles.outfitPreview,
+        { width: previewSize, height: previewSize },
+      ]}
+    >
       {stickers
         .filter((sticker) => sticker.remoteImageUrl)
         .slice()
@@ -343,14 +657,91 @@ function FriendOutfitPreview({
   );
 }
 
+function friendWardrobeMatchesSearch(
+  item: FriendWardrobeItem,
+  query: string,
+  colorOptions: readonly ColorOption[]
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return [
+    item.name,
+    item.brand,
+    item.category,
+    item.color,
+    item.colorValue,
+    item.colorFamily,
+    ...item.seasons,
+    ...getColorSearchTerms(
+      {
+        color: item.color,
+        colorValue:
+          item.colorValue ??
+          colorOptions.find((option) => option.label === item.color)?.value ??
+          "#1A1D1E",
+        colorFamily:
+          item.colorFamily ??
+          colorOptions.find((option) => option.label === item.color)?.family ??
+          "black",
+      },
+      colorOptions
+    ),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(normalizedQuery);
+}
+
+function friendOutfitMatchesSearch(
+  outfit: FriendOutfit,
+  query: string,
+  colorOptions: readonly ColorOption[]
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const stickerTerms = outfit.stickers.flatMap((sticker) => {
+    const colorTerms =
+      sticker.color && sticker.colorValue && sticker.colorFamily
+        ? getColorSearchTerms(
+            {
+              color: sticker.color,
+              colorValue: sticker.colorValue,
+              colorFamily: sticker.colorFamily,
+            },
+            colorOptions
+          )
+        : [];
+
+    return [sticker.name, sticker.brand, sticker.category, ...colorTerms];
+  });
+
+  return [outfit.name, ...outfit.seasons, ...stickerTerms]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(normalizedQuery);
+}
+
 function getFriendPreviewLayout(
   stickers: FriendOutfitSticker[],
   canvasWidth: number | null,
   canvasHeight: number | null,
-  previewSize: number,
+  previewSize: number
 ) {
   if (canvasWidth && canvasHeight) {
-    const scale = Math.min(previewSize / canvasWidth, previewSize / canvasHeight);
+    const scale = Math.min(
+      previewSize / canvasWidth,
+      previewSize / canvasHeight
+    );
 
     return {
       minX: 0,
@@ -377,14 +768,14 @@ function getFriendPreviewLayout(
       minY: Number.POSITIVE_INFINITY,
       maxX: 0,
       maxY: 0,
-    },
+    }
   );
   const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
   const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
   const inset = 12;
   const scale = Math.min(
     (previewSize - inset * 2) / contentWidth,
-    (previewSize - inset * 2) / contentHeight,
+    (previewSize - inset * 2) / contentHeight
   );
 
   return {
@@ -397,30 +788,16 @@ function getFriendPreviewLayout(
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollView: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  container: {
-    padding: 16,
-    gap: 16,
-  },
-  header: {
-    paddingTop: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  keyboardView: { flex: 1 },
+  scrollView: { flex: 1, backgroundColor: COLORS.background },
+  container: { padding: 16, gap: 16 },
+  header: { paddingTop: 8 },
+  title: { fontSize: 22, fontWeight: "700", color: COLORS.textPrimary },
   caption: {
     marginTop: 4,
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: "400",
     color: COLORS.textSecondary,
   },
   panel: {
@@ -431,34 +808,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     gap: 8,
   },
-  panelHeader: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-  },
+  sectionTitle: { fontSize: 16, fontWeight: "600", color: COLORS.textPrimary },
   panelText: {
     fontSize: 14,
-    fontWeight: '400',
+    fontWeight: "400",
     lineHeight: 20,
     color: COLORS.textSecondary,
   },
   panelCaption: {
     marginTop: 2,
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: "400",
     color: COLORS.textSecondary,
   },
-  friendInputRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  friendInputRow: { flexDirection: "row", gap: 8 },
   input: {
     flex: 1,
     minHeight: 48,
@@ -468,7 +831,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.background,
     fontSize: 14,
-    fontWeight: '400',
     color: COLORS.textPrimary,
   },
   addFriendButton: {
@@ -476,58 +838,38 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: 16,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   primaryButton: {
     minHeight: 48,
     paddingHorizontal: 16,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
-  primaryButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.surface,
-  },
-  disabledButton: {
-    backgroundColor: COLORS.primaryLight,
-  },
-  friendList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  requestList: {
-    gap: 8,
-  },
+  primaryButtonText: { fontSize: 14, fontWeight: "700", color: COLORS.surface },
+  disabledButton: { backgroundColor: COLORS.primaryLight },
   requestRow: {
     minHeight: 56,
-    paddingVertical: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
-  requestTextGroup: {
-    flex: 1,
-  },
-  requestName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
+  requestTextGroup: { flex: 1 },
+  requestName: { fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
   requestAcceptButton: {
     minWidth: 56,
     minHeight: 44,
     paddingHorizontal: 12,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.primary,
   },
   requestGhostButton: {
@@ -537,160 +879,230 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: COLORS.surface,
   },
   requestGhostButtonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textSecondary,
   },
-  friendChip: {
+  pendingRow: {
     minHeight: 44,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
-  },
-  friendChipSelected: {
-    borderColor: COLORS.primaryLight,
-    backgroundColor: COLORS.secondary,
-  },
-  friendChipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  friendChipTextSelected: {
-    color: COLORS.primary,
-  },
-  pendingChip: {
-    minHeight: 44,
-    paddingLeft: 16,
-    paddingRight: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
   },
-  pendingChipText: {
+  pendingName: {
+    flex: 1,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textSecondary,
   },
   pendingBadge: {
-    overflow: 'hidden',
+    overflow: "hidden",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     backgroundColor: COLORS.secondary,
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.primary,
+  },
+  friendSection: { gap: 8 },
+  friendList: { gap: 8 },
+  friendRow: {
+    minHeight: 64,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  friendAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.secondary,
+  },
+  friendTextGroup: { flex: 1 },
+  friendName: { fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
+  detailHeader: {
+    minHeight: 72,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.secondary,
+  },
+  detailTitleGroup: { flex: 1 },
+  detailTitle: { fontSize: 22, fontWeight: "700", color: COLORS.textPrimary },
+  mascotSlot: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.secondary,
   },
   segmentedControl: {
     minHeight: 48,
+    marginHorizontal: 16,
+    marginBottom: 8,
     padding: 4,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
-    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    flexDirection: "row",
     gap: 4,
   },
   modeButton: {
     flex: 1,
     minHeight: 40,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  modeButtonSelected: {
-    backgroundColor: COLORS.secondary,
-  },
+  modeButtonSelected: { backgroundColor: COLORS.secondary },
   modeButtonText: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textSecondary,
   },
-  modeButtonTextSelected: {
-    color: COLORS.primary,
+  modeButtonTextSelected: { color: COLORS.primary },
+  detailContent: { paddingHorizontal: 16, gap: 8 },
+  searchInput: {
+    minHeight: 40,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    fontSize: 14,
+    color: COLORS.textPrimary,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  filterScroll: { height: 48, flexGrow: 0 },
+  filterContent: { paddingTop: 4, paddingBottom: 6, gap: 6 },
+  categoryChip: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  wardrobeTile: {
-    overflow: 'hidden',
+  categoryChipSelected: {
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.secondary,
+  },
+  categoryChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  categoryChipTextSelected: { color: COLORS.primary },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  wardrobeCard: {
+    overflow: "hidden",
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
-  wardrobeImageFrame: {
-    width: '100%',
+  imageFrame: {
+    width: "100%",
     aspectRatio: 1,
+    padding: 6,
     backgroundColor: COLORS.surface,
   },
-  wardrobeImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'contain',
+  cardImage: { width: "100%", height: "100%", resizeMode: "contain" },
+  cardLabelRow: {
+    minHeight: 38,
+    paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    justifyContent: "center",
   },
-  tileText: {
-    minHeight: 36,
+  cardLabel: { fontSize: 12, fontWeight: "600", color: COLORS.textPrimary },
+  outfitCard: {
+    overflow: "hidden",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  outfitPreview: { backgroundColor: COLORS.canvasBg },
+  outfitImage: { position: "absolute", resizeMode: "contain" },
+  outfitLabelRow: {
+    minHeight: 56,
     paddingHorizontal: 8,
     paddingVertical: 8,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    justifyContent: "center",
+  },
+  outfitName: { fontSize: 12, fontWeight: "700", color: COLORS.textPrimary },
+  outfitMeta: {
+    marginTop: 2,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     color: COLORS.textSecondary,
-  },
-  outfitList: {
-    gap: 8,
-  },
-  outfitCard: {
-    overflow: 'hidden',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
-  outfitPreview: {
-    height: 148,
-    backgroundColor: COLORS.canvasBg,
-  },
-  outfitImage: {
-    position: 'absolute',
-    width: 88,
-    height: 88,
-    resizeMode: 'contain',
-  },
-  outfitLabel: {
-    minHeight: 40,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  outfitName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
   },
   outfitSeasons: {
     marginTop: 2,
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: "600",
     color: COLORS.primary,
+  },
+  emptyState: {
+    minHeight: 260,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    gap: 16,
+  },
+  emptyMascot: { fontSize: 56 },
+  speechBubble: {
+    maxWidth: 280,
+    padding: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.bubbleBg,
+  },
+  emptyText: {
+    fontSize: 14,
+    fontWeight: "400",
+    color: COLORS.textPrimary,
+    textAlign: "center",
   },
 });

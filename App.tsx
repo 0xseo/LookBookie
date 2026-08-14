@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Modal, StatusBar, StyleSheet, View } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
@@ -49,6 +50,7 @@ import {
   listFriendWardrobe,
   listOutgoingFriendRequests,
   sendFriendRequestByEmail,
+  updateCurrentProfileDisplayName,
 } from "./src/services/friendsCloud";
 import type { CategoryFilter, ClothingItem } from "./src/types/clothing";
 import type {
@@ -58,7 +60,19 @@ import type {
   FriendWardrobeItem,
 } from "./src/types/friends";
 
+const SPLASH_SCREEN_DURATION_MS = 2_000;
+
+void SplashScreen.preventAutoHideAsync();
+
 export default function App() {
+  useEffect(() => {
+    const hideSplashTimeout = setTimeout(() => {
+      void SplashScreen.hideAsync();
+    }, SPLASH_SCREEN_DURATION_MS);
+
+    return () => clearTimeout(hideSplashTimeout);
+  }, []);
+
   return (
     <SafeAreaProvider>
       <AppContent />
@@ -84,6 +98,7 @@ function AppContent() {
   const [isBackupBusy, setIsBackupBusy] = useState(false);
   const [isFriendBusy, setIsFriendBusy] = useState(false);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
+  const [currentProfile, setCurrentProfile] = useState<FriendProfile | null>(null);
   const [incomingFriendRequests, setIncomingFriendRequests] = useState<
     FriendRequest[]
   >([]);
@@ -98,8 +113,7 @@ function AppContent() {
   >([]);
   const [friendOutfits, setFriendOutfits] = useState<FriendOutfit[]>([]);
   const addItemScreenRef = useRef<AddItemScreenHandle>(null);
-  const tabBottomOffset = Math.max(8, insets.bottom) + 10;
-  const tabBarInset = 15 + tabBottomOffset;
+  const tabBarInset = 64 + Math.max(8, insets.bottom);
 
   const visibleItems =
     selectedCategory === "전체"
@@ -304,6 +318,7 @@ function AppContent() {
 
   useEffect(() => {
     if (!cloudSession) {
+      setCurrentProfile(null);
       setFriends([]);
       setIncomingFriendRequests([]);
       setOutgoingFriendRequests([]);
@@ -315,7 +330,7 @@ function AppContent() {
 
     async function prepareCloudProfile() {
       try {
-        await ensureCurrentProfile();
+        setCurrentProfile(await ensureCurrentProfile());
         await loadFriendList();
       } catch (error) {
         Alert.alert(
@@ -354,6 +369,12 @@ function AppContent() {
 
   const handleOutfitSaved = async () => {
     await loadOutfitCount();
+  };
+
+  const handleCategoriesChanged = async () => {
+    setSelectedCategory("전체");
+    await loadItems();
+    await loadCloudPendingCount();
   };
 
   const handleWardrobeRefresh = async () => {
@@ -410,11 +431,29 @@ function AppContent() {
     try {
       await signOutCloud();
       setCloudSession(null);
+      setCurrentProfile(null);
     } catch (error) {
       Alert.alert(
         "로그아웃에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
+    } finally {
+      setIsCloudBusy(false);
+    }
+  };
+
+  const handleUpdateDisplayName = async (displayName: string) => {
+    setIsCloudBusy(true);
+
+    try {
+      const updatedProfile = await updateCurrentProfileDisplayName(displayName);
+      setCurrentProfile(updatedProfile);
+    } catch (error) {
+      Alert.alert(
+        "이름을 저장하지 못했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
+      );
+      throw error;
     } finally {
       setIsCloudBusy(false);
     }
@@ -498,7 +537,6 @@ function AppContent() {
     try {
       await acceptFriendRequest(request.friendshipId);
       await loadFriendList();
-      await handleSelectFriend(request);
     } catch (error) {
       Alert.alert(
         "친구 요청 수락에 실패했어북",
@@ -545,6 +583,20 @@ function AppContent() {
     } finally {
       setIsFriendBusy(false);
     }
+  };
+
+  const handleFriendsRefresh = async () => {
+    await loadFriendList();
+
+    if (selectedFriend) {
+      await handleSelectFriend(selectedFriend);
+    }
+  };
+
+  const handleCloseFriend = () => {
+    setSelectedFriend(null);
+    setFriendWardrobeItems([]);
+    setFriendOutfits([]);
   };
 
   const handleSyncPending = async () => {
@@ -629,15 +681,18 @@ function AppContent() {
           pendingCloudCount={pendingCloudCount}
           isCloudConfigured={isSupabaseConfigured}
           cloudEmail={cloudSession?.user.email ?? null}
+          cloudDisplayName={currentProfile?.displayName ?? null}
           isCloudBusy={isCloudBusy}
           isBackupBusy={isBackupBusy}
           bottomInset={tabBarInset}
           onSignIn={handleCloudSignIn}
           onSignUp={handleCloudSignUp}
           onSignOut={handleCloudSignOut}
+          onUpdateDisplayName={handleUpdateDisplayName}
           onSyncPending={handleSyncPending}
           onExportBackup={handleExportBackup}
           onImportBackup={handleImportBackup}
+          onCategoriesChanged={handleCategoriesChanged}
         />
       ) : null}
 
@@ -657,13 +712,15 @@ function AppContent() {
           onAcceptFriendRequest={handleAcceptFriendRequest}
           onDeclineFriendRequest={handleDeclineFriendRequest}
           onSelectFriend={handleSelectFriend}
+          onCloseFriend={handleCloseFriend}
+          onRefresh={handleFriendsRefresh}
           onOpenProfile={() => setActiveTab("profile")}
         />
       ) : null}
 
       <BottomTabs
         activeTab={activeTab}
-        bottomOffset={tabBottomOffset}
+        bottomInset={insets.bottom}
         onSelectTab={setActiveTab}
       />
 

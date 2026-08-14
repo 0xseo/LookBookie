@@ -25,6 +25,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
 import { ColorPalettePicker } from '../components/ColorPalettePicker';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { RepresentativeColorExtractor } from '../components/RepresentativeColorExtractor';
 import { ImageCropScreen } from './ImageCropScreen';
 import { ImageEraserScreen } from './ImageEraserScreen';
@@ -32,8 +33,9 @@ import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage
 import { insertClothingItem } from '../storage/database';
 import { syncClothingItemToCloud } from '../services/wardrobeCloud';
 import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
+import { useCategoryOptions } from '../hooks/useCategoryOptions';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import {
-  CLOTHING_CATEGORIES,
   COLOR_OPTIONS,
   SEASONS,
   type ClothingCategory,
@@ -71,14 +73,23 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     const [isSaving, setIsSaving] = useState(false);
     const [isCropVisible, setIsCropVisible] = useState(false);
     const [isEraserVisible, setIsEraserVisible] = useState(false);
-    const { colorOptions, customColorOptions, setCustomColorOptions } = useColorPaletteOptions();
+    const [isCancelConfirmVisible, setIsCancelConfirmVisible] = useState(false);
+    const { colorOptions } = useColorPaletteOptions();
+    const { categoryOptions } = useCategoryOptions();
+    const keyboardHeight = useKeyboardHeight();
 
     const hasDraft =
       Boolean(imageUri || cropSourceUri || eraserSourceUri || brand.trim()) ||
       name.trim().length > 0 ||
       seasons.length > 0 ||
-      category !== '상의' ||
+      category !== categoryOptions[0] ||
       color !== '블랙';
+
+    useEffect(() => {
+      if (!categoryOptions.includes(category) && categoryOptions[0]) {
+        setCategory(categoryOptions[0]);
+      }
+    }, [category, categoryOptions]);
 
     const selectColorOption = (nextColor: ClothingColor, option: ColorOption) => {
       setColor(nextColor);
@@ -97,22 +108,24 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
         return;
       }
 
-      Alert.alert('등록을 취소할까북?', '입력 중인 내용은 저장되지 않아요.', [
-        { text: '계속 입력', style: 'cancel' },
-        { text: '취소하기', style: 'destructive', onPress: onCancel },
-      ]);
+      setIsCancelConfirmVisible(true);
     }, [hasDraft, isSaving, onCancel]);
 
     useImperativeHandle(ref, () => ({ requestCancel }), [requestCancel]);
 
     useEffect(() => {
       const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (isCancelConfirmVisible) {
+          setIsCancelConfirmVisible(false);
+          return true;
+        }
+
         requestCancel();
         return true;
       });
 
       return () => subscription.remove();
-    }, [requestCancel]);
+    }, [isCancelConfirmVisible, requestCancel]);
 
     const startImagePipeline = (uri: string) => {
       setCropSourceUri(uri);
@@ -268,7 +281,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     return (
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
         >
           <View style={styles.header}>
@@ -286,7 +299,15 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[
+              styles.content,
+              { paddingBottom: 32 + keyboardHeight },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets
+          >
             <View style={styles.previewArea}>
               {imageUri ? (
                 <Image source={{ uri: imageUri }} style={styles.previewImage} />
@@ -344,7 +365,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
             <View style={styles.formGroup}>
               <Text style={styles.label}>카테고리</Text>
               <View style={styles.chipWrap}>
-                {CLOTHING_CATEGORIES.map((option) => (
+                {categoryOptions.map((option) => (
                   <ChoiceChip
                     key={option}
                     label={option}
@@ -373,8 +394,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
               <Text style={styles.label}>대표색</Text>
               <ColorPalettePicker
                 selectedColor={color}
-                customColorOptions={customColorOptions}
-                onCustomColorOptionsChange={setCustomColorOptions}
+                colorOptions={colorOptions}
                 onSelectColor={selectColorOption}
                 suggestedColorOption={suggestedColorOption}
                 extractedColorHex={extractedColorHex}
@@ -396,6 +416,20 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
             </Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        <ConfirmDialog
+          visible={isCancelConfirmVisible}
+          title="등록을 취소할까북?"
+          message="입력 중인 옷 정보와 이미지 수정 내용은 저장되지 않아요."
+          cancelLabel="계속 입력"
+          confirmLabel="등록 취소"
+          destructive
+          onCancel={() => setIsCancelConfirmVisible(false)}
+          onConfirm={() => {
+            setIsCancelConfirmVisible(false);
+            onCancel();
+          }}
+        />
 
         <Modal
           visible={isCropVisible}

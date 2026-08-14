@@ -11,4 +11,6 @@ export const COLORS = {
   border: '#E9ECEF',
   danger: '#E63946',
   bubbleBg: '#F1F5F9',
+  overlay: 'rgba(26, 29, 30, 0.42)',
+  transparent: 'transparent',
 } as const;

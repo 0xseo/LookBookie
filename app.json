@@ -1,11 +1,12 @@
 {
   "expo": {
-    "name": "LookBoogie",
+    "name": "룩부기",
     "slug": "lookboogie",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "lookboogie",
+    "icon": "./icon.png",
     "ios": {
       "supportsTablet": true
     },
@@ -22,7 +23,16 @@
         }
       ],
       "expo-sqlite",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./splash.png",
+          "imageWidth": 320,
+          "resizeMode": "contain"
+        }
+      ]
     ],
     "extra": {
       "eas": {
