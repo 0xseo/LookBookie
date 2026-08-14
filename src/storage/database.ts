@@ -9,6 +9,7 @@ import type {
   NewClothingItem,
   Season,
 } from '../types/clothing';
+import type { LocalBackupImportResult, LocalBackupPayload } from '../types/backup';
 import type { ClothingCloudFields, CloudSyncStatus } from '../types/sync';
 import type { NewOutfit, Outfit, OutfitSticker } from '../types/outfit';
 
@@ -175,6 +176,70 @@ export async function countCloudPendingClothingItems() {
   );
 
   return row?.count ?? 0;
+}
+
+export async function createLocalBackupPayload(): Promise<LocalBackupPayload> {
+  const db = await getDatabase();
+  const clothingRows = await db.getAllAsync<ClothingRow>(
+    'SELECT * FROM clothes ORDER BY datetime(created_at) ASC, id ASC',
+  );
+  const outfitRows = await db.getAllAsync<OutfitRow>(
+    'SELECT * FROM outfits ORDER BY datetime(created_at) ASC, id ASC',
+  );
+
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    clothes: clothingRows.map(mapClothingRow),
+    outfits: outfitRows.map(mapOutfitRow),
+  };
+}
+
+export async function importLocalBackupPayload(
+  payload: LocalBackupPayload,
+): Promise<LocalBackupImportResult> {
+  if (payload.version !== 1 || !Array.isArray(payload.clothes) || !Array.isArray(payload.outfits)) {
+    throw new Error('지원하지 않는 백업 파일 형식이에요.');
+  }
+
+  let clothesCount = 0;
+  let outfitsCount = 0;
+
+  for (const item of payload.clothes) {
+    const fallbackImagePath = item.localImagePath || item.remoteImageUrl;
+
+    if (!fallbackImagePath) {
+      continue;
+    }
+
+    await insertClothingItem({
+      localImagePath: fallbackImagePath,
+      remoteImageUrl: item.remoteImageUrl,
+      remoteRecordId: item.remoteRecordId,
+      storagePath: item.storagePath,
+      brand: item.brand,
+      category: item.category,
+      seasons: item.seasons,
+      color: item.color,
+      cloudSyncStatus: item.cloudSyncStatus,
+      cloudError: item.cloudError,
+      syncedAt: item.syncedAt,
+    });
+    clothesCount += 1;
+  }
+
+  for (const outfit of payload.outfits) {
+    await insertOutfit({
+      name: outfit.name,
+      stickers: outfit.stickers,
+    });
+    outfitsCount += 1;
+  }
+
+  return {
+    clothesCount,
+    outfitsCount,
+  };
 }
 
 export async function updateClothingCloudState(id: number, fields: ClothingCloudFields) {

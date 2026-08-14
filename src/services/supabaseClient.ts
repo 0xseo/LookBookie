@@ -41,6 +41,40 @@ type LookbookieDatabase = {
         };
         Relationships: [];
       };
+      profiles: {
+        Row: {
+          id: string;
+          email: string;
+          display_name: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          email: string;
+          display_name?: string | null;
+        };
+        Update: {
+          email?: string;
+          display_name?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      friendships: {
+        Row: {
+          id: string;
+          owner_id: string;
+          friend_id: string;
+          created_at: string;
+        };
+        Insert: {
+          owner_id: string;
+          friend_id: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
       outfits: {
         Row: {
           id: string;

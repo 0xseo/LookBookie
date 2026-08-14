@@ -25,7 +25,15 @@ import {
   subscribeToCloudAuthChanges,
   syncClothingItemToCloud,
 } from './src/services/wardrobeCloud';
+import { exportLocalBackupFile, importLocalBackupFile } from './src/services/backupService';
+import {
+  addFriendByEmail,
+  ensureCurrentProfile,
+  listFriends,
+  listFriendWardrobe,
+} from './src/services/friendsCloud';
 import type { CategoryFilter, ClothingItem } from './src/types/clothing';
+import type { FriendProfile, FriendWardrobeItem } from './src/types/friends';
 
 const TAB_BAR_INSET = 96;
 
@@ -39,6 +47,11 @@ export default function App() {
   const [cloudSession, setCloudSession] = useState<CloudSession | null>(null);
   const [pendingCloudCount, setPendingCloudCount] = useState(0);
   const [isCloudBusy, setIsCloudBusy] = useState(false);
+  const [isBackupBusy, setIsBackupBusy] = useState(false);
+  const [isFriendBusy, setIsFriendBusy] = useState(false);
+  const [friends, setFriends] = useState<FriendProfile[]>([]);
+  const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
+  const [friendWardrobeItems, setFriendWardrobeItems] = useState<FriendWardrobeItem[]>([]);
 
   const visibleItems =
     selectedCategory === '전체'
@@ -85,6 +98,22 @@ export default function App() {
     }
   }, []);
 
+  const loadFriendList = useCallback(async () => {
+    if (!isSupabaseConfigured || !cloudSession) {
+      setFriends([]);
+      return;
+    }
+
+    try {
+      setFriends(await listFriends());
+    } catch (error) {
+      Alert.alert(
+        '친구 목록을 불러오지 못했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+    }
+  }, [cloudSession]);
+
   useEffect(() => {
     async function bootstrap() {
       try {
@@ -122,6 +151,29 @@ export default function App() {
       setCloudSession(session);
     });
   }, []);
+
+  useEffect(() => {
+    if (!cloudSession) {
+      setFriends([]);
+      setSelectedFriend(null);
+      setFriendWardrobeItems([]);
+      return;
+    }
+
+    async function prepareCloudProfile() {
+      try {
+        await ensureCurrentProfile();
+        await loadFriendList();
+      } catch (error) {
+        Alert.alert(
+          '클라우드 프로필을 준비하지 못했어북',
+          error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+        );
+      }
+    }
+
+    prepareCloudProfile();
+  }, [cloudSession, loadFriendList]);
 
   const handleSelectCategory = (category: CategoryFilter) => {
     setSelectedCategory(category);
@@ -184,6 +236,85 @@ export default function App() {
       );
     } finally {
       setIsCloudBusy(false);
+    }
+  };
+
+  const handleExportBackup = async () => {
+    setIsBackupBusy(true);
+
+    try {
+      const result = await exportLocalBackupFile();
+      Alert.alert(
+        '백업을 만들었어북',
+        result.shared ? '공유 시트로 백업 파일을 내보냈어요.' : result.uri,
+      );
+    } catch (error) {
+      Alert.alert(
+        '백업 내보내기에 실패했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+    } finally {
+      setIsBackupBusy(false);
+    }
+  };
+
+  const handleImportBackup = async () => {
+    setIsBackupBusy(true);
+
+    try {
+      const result = await importLocalBackupFile();
+
+      if (!result) {
+        return;
+      }
+
+      await loadItems();
+      await loadOutfitCount();
+      await loadCloudPendingCount();
+      Alert.alert(
+        '백업을 가져왔어북',
+        `옷 ${result.clothesCount}개와 코디 ${result.outfitsCount}개를 추가했어요.`,
+      );
+    } catch (error) {
+      Alert.alert(
+        '백업 가져오기에 실패했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+    } finally {
+      setIsBackupBusy(false);
+    }
+  };
+
+  const handleAddFriend = async (email: string) => {
+    setIsFriendBusy(true);
+
+    try {
+      const friend = await addFriendByEmail(email);
+      await loadFriendList();
+      await handleSelectFriend(friend);
+    } catch (error) {
+      Alert.alert(
+        '친구 추가에 실패했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+    } finally {
+      setIsFriendBusy(false);
+    }
+  };
+
+  const handleSelectFriend = async (friend: FriendProfile) => {
+    setIsFriendBusy(true);
+    setSelectedFriend(friend);
+
+    try {
+      setFriendWardrobeItems(await listFriendWardrobe(friend.id));
+    } catch (error) {
+      Alert.alert(
+        '친구 옷장을 불러오지 못했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+    } finally {
+      setIsFriendBusy(false);
     }
   };
 
@@ -265,11 +396,20 @@ export default function App() {
           isCloudConfigured={isSupabaseConfigured}
           cloudEmail={cloudSession?.user.email ?? null}
           isCloudBusy={isCloudBusy}
+          isBackupBusy={isBackupBusy}
+          isFriendBusy={isFriendBusy}
+          friends={friends}
+          selectedFriend={selectedFriend}
+          friendWardrobeItems={friendWardrobeItems}
           bottomInset={TAB_BAR_INSET}
           onSignIn={handleCloudSignIn}
           onSignUp={handleCloudSignUp}
           onSignOut={handleCloudSignOut}
           onSyncPending={handleSyncPending}
+          onExportBackup={handleExportBackup}
+          onImportBackup={handleImportBackup}
+          onAddFriend={handleAddFriend}
+          onSelectFriend={handleSelectFriend}
         />
       ) : null}
 

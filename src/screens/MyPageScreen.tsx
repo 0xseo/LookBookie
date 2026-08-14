@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 
 import { COLORS } from '../../constants/colors';
+import type { FriendProfile, FriendWardrobeItem } from '../types/friends';
 
 type MyPageScreenProps = {
   clothesCount: number;
@@ -20,11 +22,20 @@ type MyPageScreenProps = {
   isCloudConfigured: boolean;
   cloudEmail: string | null;
   isCloudBusy: boolean;
+  isBackupBusy: boolean;
+  isFriendBusy: boolean;
+  friends: FriendProfile[];
+  selectedFriend: FriendProfile | null;
+  friendWardrobeItems: FriendWardrobeItem[];
   bottomInset: number;
   onSignIn: (email: string, password: string) => Promise<void>;
   onSignUp: (email: string, password: string) => Promise<void>;
   onSignOut: () => Promise<void>;
   onSyncPending: () => Promise<void>;
+  onExportBackup: () => Promise<void>;
+  onImportBackup: () => Promise<void>;
+  onAddFriend: (email: string) => Promise<void>;
+  onSelectFriend: (friend: FriendProfile) => Promise<void>;
 };
 
 export function MyPageScreen({
@@ -34,14 +45,24 @@ export function MyPageScreen({
   isCloudConfigured,
   cloudEmail,
   isCloudBusy,
+  isBackupBusy,
+  isFriendBusy,
+  friends,
+  selectedFriend,
+  friendWardrobeItems,
   bottomInset,
   onSignIn,
   onSignUp,
   onSignOut,
   onSyncPending,
+  onExportBackup,
+  onImportBackup,
+  onAddFriend,
+  onSelectFriend,
 }: MyPageScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [friendEmail, setFriendEmail] = useState('');
 
   const submitAuth = async (mode: 'signIn' | 'signUp') => {
     if (!email.trim() || !password) {
@@ -55,6 +76,16 @@ export function MyPageScreen({
     }
 
     await onSignUp(email.trim(), password);
+  };
+
+  const submitFriend = async () => {
+    if (!friendEmail.trim()) {
+      Alert.alert('친구 이메일이 필요해북', '추가할 친구의 이메일을 입력해 주세요.');
+      return;
+    }
+
+    await onAddFriend(friendEmail.trim());
+    setFriendEmail('');
   };
 
   return (
@@ -168,8 +199,99 @@ export function MyPageScreen({
           <Text style={styles.sectionTitle}>Phase 상태</Text>
           <Text style={styles.phaseText}>Phase 1: 로컬 옷장 등록/조회 완료</Text>
           <Text style={styles.phaseText}>Phase 2: 코디북 캔버스 완료</Text>
-          <Text style={styles.phaseText}>Phase 3: Supabase 백업/캐싱 연결 중</Text>
+          <Text style={styles.phaseText}>Phase 3: Supabase 백업/캐싱 완료</Text>
+          <Text style={styles.phaseText}>Phase 4: 백업/친구 옷장 연결 중</Text>
         </View>
+
+        <View style={styles.panel}>
+          <Text style={styles.sectionTitle}>백업</Text>
+          <Text style={styles.panelText}>옷과 코디의 텍스트 데이터를 JSON 파일로 관리해요.</Text>
+          <View style={styles.authActions}>
+            <Pressable
+              onPress={onExportBackup}
+              disabled={isBackupBusy}
+              style={[styles.primaryButton, isBackupBusy && styles.disabledButton]}
+              hitSlop={8}
+            >
+              <Text style={styles.primaryButtonText}>Export</Text>
+            </Pressable>
+            <Pressable
+              onPress={onImportBackup}
+              disabled={isBackupBusy}
+              style={styles.secondaryButton}
+              hitSlop={8}
+            >
+              <Text style={styles.secondaryButtonText}>Import</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {cloudEmail ? (
+          <View style={styles.panel}>
+            <Text style={styles.sectionTitle}>친구 옷장</Text>
+            <View style={styles.friendInputRow}>
+              <TextInput
+                value={friendEmail}
+                onChangeText={setFriendEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="친구 이메일"
+                placeholderTextColor={COLORS.textSecondary}
+                style={[styles.input, styles.friendInput]}
+              />
+              <Pressable
+                onPress={submitFriend}
+                disabled={isFriendBusy}
+                style={[styles.addFriendButton, isFriendBusy && styles.disabledButton]}
+                hitSlop={8}
+              >
+                <Text style={styles.primaryButtonText}>추가</Text>
+              </Pressable>
+            </View>
+
+            {friends.length > 0 ? (
+              <View style={styles.friendList}>
+                {friends.map((friend) => {
+                  const selected = selectedFriend?.id === friend.id;
+
+                  return (
+                    <Pressable
+                      key={friend.id}
+                      onPress={() => onSelectFriend(friend)}
+                      style={[styles.friendChip, selected && styles.friendChipSelected]}
+                      hitSlop={8}
+                    >
+                      <Text style={[styles.friendChipText, selected && styles.friendChipTextSelected]}>
+                        {friend.displayName ?? friend.email}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.panelText}>아직 추가한 친구가 없어북.</Text>
+            )}
+
+            {isFriendBusy ? (
+              <ActivityIndicator color={COLORS.primary} />
+            ) : selectedFriend ? (
+              <View style={styles.friendWardrobeGrid}>
+                {friendWardrobeItems.length === 0 ? (
+                  <Text style={styles.panelText}>친구 옷장이 아직 비어있어북.</Text>
+                ) : (
+                  friendWardrobeItems.map((item) => (
+                    <View key={item.id} style={styles.friendWardrobeTile}>
+                      <Image source={{ uri: item.remoteImageUrl }} style={styles.friendWardrobeImage} />
+                      <Text style={styles.friendWardrobeText} numberOfLines={1}>
+                        {item.brand || item.category}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -304,6 +426,22 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: COLORS.textPrimary,
   },
+  friendInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  friendInput: {
+    flex: 1,
+  },
+  addFriendButton: {
+    minWidth: 72,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
   authActions: {
     flexDirection: 'row',
     gap: 8,
@@ -344,6 +482,59 @@ const styles = StyleSheet.create({
   phaseText: {
     fontSize: 14,
     fontWeight: '400',
+    color: COLORS.textSecondary,
+  },
+  friendList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  friendChip: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
+  },
+  friendChipSelected: {
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.secondary,
+  },
+  friendChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  friendChipTextSelected: {
+    color: COLORS.primary,
+  },
+  friendWardrobeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  friendWardrobeTile: {
+    width: 96,
+    overflow: 'hidden',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
+  },
+  friendWardrobeImage: {
+    width: 96,
+    height: 96,
+    resizeMode: 'cover',
+    backgroundColor: COLORS.surface,
+  },
+  friendWardrobeText: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 12,
+    fontWeight: '600',
     color: COLORS.textSecondary,
   },
 });

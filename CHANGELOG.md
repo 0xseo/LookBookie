@@ -9,3 +9,6 @@
 [2026-08-14] | [Phase 3] | Applied LookBookie Supabase schema, RLS policies, and clothes storage bucket migration | Prepare cloud database and storage for authenticated wardrobe backups
 [2026-08-14] | [Phase 3] | Added Supabase env setup, React Native client, auth helpers, and clothing cloud upload service | Connect local-first wardrobe registration to optional cloud sync
 [2026-08-14] | [Phase 3] | Added owner_id indexes and optimized RLS policies after Supabase performance advisor warnings | Keep authenticated cloud queries scalable as wardrobe and outfit data grows
+[2026-08-14] | [Phase 4] | Added Supabase profiles/friendships schema and friend wardrobe read policy | Enable online lookup of another account wardrobe after adding them as a friend
+[2026-08-14] | [Phase 4] | Added JSON backup export/import services and MyPage controls using Expo DocumentPicker and Sharing | Let users back up and restore local wardrobe/outfit text data without image file embedding
+[2026-08-14] | [Phase 4] | Added friend profile sync, friend add by email, friend list, and online friend wardrobe preview | Complete the first online sharing path while keeping the user's own wardrobe local-first
