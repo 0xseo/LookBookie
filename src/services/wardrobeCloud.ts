@@ -1,6 +1,6 @@
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
-import type { NewClothingItem } from '../types/clothing';
+import type { ClothingItem, NewClothingItem } from '../types/clothing';
 import type { CloudSyncResult } from '../types/sync';
 import { isSupabaseConfigured, supabase, supabaseStorageBucket } from './supabaseClient';
 
@@ -110,6 +110,7 @@ export async function syncClothingItemToCloud(item: NewClothingItem): Promise<Cl
         owner_id: user.id,
         remote_image_url: uploadResult.publicUrl,
         storage_path: uploadResult.storagePath,
+        name: item.name.trim() || null,
         brand: item.brand.trim() || null,
         category: item.category,
         seasons: item.seasons,
@@ -132,6 +133,78 @@ export async function syncClothingItemToCloud(item: NewClothingItem): Promise<Cl
     };
   } catch (error) {
     return buildFailedResult(error instanceof Error ? error.message : 'Unknown cloud sync error');
+  }
+}
+
+export async function syncClothingItemUpdateToCloud(
+  item: ClothingItem,
+  imageChanged: boolean,
+): Promise<CloudSyncResult> {
+  if (!isSupabaseConfigured || !supabase) {
+    return NOT_CONFIGURED_RESULT;
+  }
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    return {
+      ...NOT_CONFIGURED_RESULT,
+      cloudSyncStatus: 'pending',
+      cloudError: sessionError.message,
+    };
+  }
+
+  if (!session?.user) {
+    return {
+      ...NOT_CONFIGURED_RESULT,
+      cloudSyncStatus: 'pending',
+      cloudError: 'Supabase login required',
+    };
+  }
+
+  if (!item.remoteRecordId) {
+    return syncClothingItemToCloud(item);
+  }
+
+  try {
+    const uploadResult = imageChanged
+      ? await uploadClothingImage(session.user.id, item.localImagePath)
+      : {
+          publicUrl: item.remoteImageUrl,
+          storagePath: item.storagePath,
+        };
+    const nextRemoteImageUrl = uploadResult.publicUrl ?? item.remoteImageUrl;
+    const nextStoragePath = uploadResult.storagePath ?? item.storagePath;
+    const { error } = await supabase
+      .from('clothes')
+      .update({
+        remote_image_url: nextRemoteImageUrl ?? undefined,
+        storage_path: nextStoragePath ?? undefined,
+        name: item.name.trim() || null,
+        brand: item.brand.trim() || null,
+        category: item.category,
+        seasons: item.seasons,
+        color: item.color,
+      })
+      .eq('id', item.remoteRecordId);
+
+    if (error) {
+      throw error;
+    }
+
+    return {
+      remoteImageUrl: nextRemoteImageUrl,
+      remoteRecordId: item.remoteRecordId,
+      storagePath: nextStoragePath,
+      cloudSyncStatus: 'synced',
+      cloudError: null,
+      syncedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    return buildFailedResult(error instanceof Error ? error.message : 'Unknown cloud update error');
   }
 }
 

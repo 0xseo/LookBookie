@@ -1,4 +1,9 @@
-import type { FriendProfile, FriendWardrobeItem } from '../types/friends';
+import type {
+  FriendOutfit,
+  FriendOutfitSticker,
+  FriendProfile,
+  FriendWardrobeItem,
+} from '../types/friends';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 
 export async function ensureCurrentProfile() {
@@ -116,7 +121,7 @@ export async function listFriendWardrobe(friendId: string): Promise<FriendWardro
 
   const { data, error } = await client
     .from('clothes')
-    .select('id,owner_id,remote_image_url,brand,category,seasons,color,created_at')
+    .select('id,owner_id,remote_image_url,name,brand,category,seasons,color,created_at')
     .eq('owner_id', friendId)
     .order('created_at', { ascending: false });
 
@@ -128,11 +133,35 @@ export async function listFriendWardrobe(friendId: string): Promise<FriendWardro
     id: item.id,
     ownerId: item.owner_id,
     remoteImageUrl: item.remote_image_url,
+    name: item.name,
     brand: item.brand,
     category: item.category,
     seasons: item.seasons,
     color: item.color,
     createdAt: item.created_at,
+  }));
+}
+
+export async function listFriendOutfits(friendId: string): Promise<FriendOutfit[]> {
+  await getCloudUser();
+  const client = getConfiguredSupabase();
+
+  const { data, error } = await client
+    .from('outfits')
+    .select('id,owner_id,name,stickers,created_at')
+    .eq('owner_id', friendId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return data.map((outfit) => ({
+    id: outfit.id,
+    ownerId: outfit.owner_id,
+    name: outfit.name,
+    stickers: parseFriendOutfitStickers(outfit.stickers),
+    createdAt: outfit.created_at,
   }));
 }
 
@@ -173,4 +202,34 @@ function mapProfile(profile: {
     email: profile.email,
     displayName: profile.display_name,
   };
+}
+
+function parseFriendOutfitStickers(value: unknown): FriendOutfitSticker[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((sticker) => {
+      if (!sticker || typeof sticker !== 'object') {
+        return null;
+      }
+
+      const candidate = sticker as Partial<FriendOutfitSticker>;
+
+      return {
+        remoteImageUrl:
+          typeof candidate.remoteImageUrl === 'string' ? candidate.remoteImageUrl : null,
+        name: typeof candidate.name === 'string' ? candidate.name : null,
+        brand: typeof candidate.brand === 'string' ? candidate.brand : null,
+        category: typeof candidate.category === 'string' ? candidate.category : null,
+        color: typeof candidate.color === 'string' ? candidate.color : null,
+        x: typeof candidate.x === 'number' ? candidate.x : 0,
+        y: typeof candidate.y === 'number' ? candidate.y : 0,
+        size: typeof candidate.size === 'number' ? candidate.size : 96,
+        rotation: typeof candidate.rotation === 'number' ? candidate.rotation : 0,
+        zIndex: typeof candidate.zIndex === 'number' ? candidate.zIndex : 0,
+      };
+    })
+    .filter((sticker): sticker is FriendOutfitSticker => Boolean(sticker));
 }

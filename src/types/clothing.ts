@@ -37,6 +37,7 @@ export type ClothingItem = {
   remoteImageUrl: string | null;
   remoteRecordId: string | null;
   storagePath: string | null;
+  name: string;
   brand: string;
   category: ClothingCategory;
   seasons: Season[];
@@ -52,6 +53,7 @@ export type NewClothingItem = {
   remoteImageUrl?: string | null;
   remoteRecordId?: string | null;
   storagePath?: string | null;
+  name: string;
   brand: string;
   category: ClothingCategory;
   seasons: Season[];

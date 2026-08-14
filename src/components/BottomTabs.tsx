@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { COLORS } from '../../constants/colors';
 
-export type AppTab = 'wardrobe' | 'codiBook' | 'profile';
+export type AppTab = 'wardrobe' | 'codiBook' | 'friends' | 'profile';
 
 type BottomTabsProps = {
   activeTab: AppTab;
@@ -13,6 +13,7 @@ type BottomTabsProps = {
 const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: 'wardrobe', label: '옷장', icon: '▦' },
   { key: 'codiBook', label: '코디북', icon: '✦' },
+  { key: 'friends', label: '친구', icon: '◇' },
   { key: 'profile', label: '마이', icon: '○' },
 ];
 

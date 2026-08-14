@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,7 +12,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
-import type { FriendProfile, FriendWardrobeItem } from '../types/friends';
 
 type MyPageScreenProps = {
   clothesCount: number;
@@ -23,10 +21,6 @@ type MyPageScreenProps = {
   cloudEmail: string | null;
   isCloudBusy: boolean;
   isBackupBusy: boolean;
-  isFriendBusy: boolean;
-  friends: FriendProfile[];
-  selectedFriend: FriendProfile | null;
-  friendWardrobeItems: FriendWardrobeItem[];
   bottomInset: number;
   onSignIn: (email: string, password: string) => Promise<void>;
   onSignUp: (email: string, password: string) => Promise<void>;
@@ -34,8 +28,6 @@ type MyPageScreenProps = {
   onSyncPending: () => Promise<void>;
   onExportBackup: () => Promise<void>;
   onImportBackup: () => Promise<void>;
-  onAddFriend: (email: string) => Promise<void>;
-  onSelectFriend: (friend: FriendProfile) => Promise<void>;
 };
 
 export function MyPageScreen({
@@ -46,10 +38,6 @@ export function MyPageScreen({
   cloudEmail,
   isCloudBusy,
   isBackupBusy,
-  isFriendBusy,
-  friends,
-  selectedFriend,
-  friendWardrobeItems,
   bottomInset,
   onSignIn,
   onSignUp,
@@ -57,12 +45,9 @@ export function MyPageScreen({
   onSyncPending,
   onExportBackup,
   onImportBackup,
-  onAddFriend,
-  onSelectFriend,
 }: MyPageScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [friendEmail, setFriendEmail] = useState('');
 
   const submitAuth = async (mode: 'signIn' | 'signUp') => {
     if (!email.trim() || !password) {
@@ -76,16 +61,6 @@ export function MyPageScreen({
     }
 
     await onSignUp(email.trim(), password);
-  };
-
-  const submitFriend = async () => {
-    if (!friendEmail.trim()) {
-      Alert.alert('친구 이메일이 필요해북', '추가할 친구의 이메일을 입력해 주세요.');
-      return;
-    }
-
-    await onAddFriend(friendEmail.trim());
-    setFriendEmail('');
   };
 
   return (
@@ -225,73 +200,6 @@ export function MyPageScreen({
             </Pressable>
           </View>
         </View>
-
-        {cloudEmail ? (
-          <View style={styles.panel}>
-            <Text style={styles.sectionTitle}>친구 옷장</Text>
-            <View style={styles.friendInputRow}>
-              <TextInput
-                value={friendEmail}
-                onChangeText={setFriendEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder="친구 이메일"
-                placeholderTextColor={COLORS.textSecondary}
-                style={[styles.input, styles.friendInput]}
-              />
-              <Pressable
-                onPress={submitFriend}
-                disabled={isFriendBusy}
-                style={[styles.addFriendButton, isFriendBusy && styles.disabledButton]}
-                hitSlop={8}
-              >
-                <Text style={styles.primaryButtonText}>추가</Text>
-              </Pressable>
-            </View>
-
-            {friends.length > 0 ? (
-              <View style={styles.friendList}>
-                {friends.map((friend) => {
-                  const selected = selectedFriend?.id === friend.id;
-
-                  return (
-                    <Pressable
-                      key={friend.id}
-                      onPress={() => onSelectFriend(friend)}
-                      style={[styles.friendChip, selected && styles.friendChipSelected]}
-                      hitSlop={8}
-                    >
-                      <Text style={[styles.friendChipText, selected && styles.friendChipTextSelected]}>
-                        {friend.displayName ?? friend.email}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : (
-              <Text style={styles.panelText}>아직 추가한 친구가 없어북.</Text>
-            )}
-
-            {isFriendBusy ? (
-              <ActivityIndicator color={COLORS.primary} />
-            ) : selectedFriend ? (
-              <View style={styles.friendWardrobeGrid}>
-                {friendWardrobeItems.length === 0 ? (
-                  <Text style={styles.panelText}>친구 옷장이 아직 비어있어북.</Text>
-                ) : (
-                  friendWardrobeItems.map((item) => (
-                    <View key={item.id} style={styles.friendWardrobeTile}>
-                      <Image source={{ uri: item.remoteImageUrl }} style={styles.friendWardrobeImage} />
-                      <Text style={styles.friendWardrobeText} numberOfLines={1}>
-                        {item.brand || item.category}
-                      </Text>
-                    </View>
-                  ))
-                )}
-              </View>
-            ) : null}
-          </View>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

@@ -22,6 +22,7 @@ type WardrobeScreenProps = {
   isLoading: boolean;
   bottomInset: number;
   onSelectCategory: (category: CategoryFilter) => void;
+  onItemPress: (item: ClothingItem) => void;
   onAddPress: () => void;
 };
 
@@ -35,6 +36,7 @@ export function WardrobeScreen({
   isLoading,
   bottomInset,
   onSelectCategory,
+  onItemPress,
   onAddPress,
 }: WardrobeScreenProps) {
   const { width } = useWindowDimensions();
@@ -104,27 +106,28 @@ export function WardrobeScreen({
               items.length === 0 && styles.emptyGridContent,
             ]}
             renderItem={({ item }) => (
-              <View
+              <Pressable
+                onPress={() => onItemPress(item)}
                 style={[
                   styles.gridTile,
                   {
                     width: tileSize,
-                    height: tileSize,
                   },
                 ]}
+                hitSlop={8}
               >
-                <Image source={{ uri: item.localImagePath }} style={styles.itemImage} />
-                <View style={[styles.syncPill, getSyncPillStyle(item.cloudSyncStatus)]}>
-                  <Text style={styles.syncText}>{getSyncLabel(item.cloudSyncStatus)}</Text>
-                </View>
-                {item.brand ? (
-                  <View style={styles.brandPill}>
-                    <Text style={styles.brandText} numberOfLines={1}>
-                      {item.brand}
-                    </Text>
+                <View style={styles.itemImageFrame}>
+                  <Image source={{ uri: item.localImagePath }} style={styles.itemImage} />
+                  <View style={[styles.syncPill, getSyncPillStyle(item.cloudSyncStatus)]}>
+                    <Text style={styles.syncText}>{getSyncLabel(item.cloudSyncStatus)}</Text>
                   </View>
-                ) : null}
-              </View>
+                </View>
+                <View style={styles.brandRow}>
+                  <Text style={styles.brandText} numberOfLines={1}>
+                    {item.brand || item.name || item.category}
+                  </Text>
+                </View>
+              </Pressable>
             )}
             ListEmptyComponent={<EmptyWardrobe />}
           />
@@ -284,10 +287,15 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
+  itemImageFrame: {
+    width: '100%',
+    aspectRatio: 1,
+    backgroundColor: COLORS.surface,
+  },
   itemImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
+    resizeMode: 'contain',
   },
   syncPill: {
     position: 'absolute',
@@ -316,16 +324,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.surface,
   },
-  brandPill: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
-    minHeight: 28,
-    borderRadius: 12,
+  brandRow: {
+    minHeight: 38,
     paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
     justifyContent: 'center',
-    backgroundColor: COLORS.bubbleBg,
+    backgroundColor: COLORS.surface,
   },
   brandText: {
     fontSize: 12,

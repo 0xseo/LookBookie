@@ -21,6 +21,7 @@ type ClothingRow = {
   remote_image_url: string | null;
   remote_record_id: string | null;
   storage_path: string | null;
+  name: string | null;
   brand: string | null;
   category: ClothingCategory;
   seasons: string | null;
@@ -78,6 +79,7 @@ export async function initDatabase() {
   await ensureColumn(db, 'clothes', 'remote_image_url', 'TEXT');
   await ensureColumn(db, 'clothes', 'remote_record_id', 'TEXT');
   await ensureColumn(db, 'clothes', 'storage_path', 'TEXT');
+  await ensureColumn(db, 'clothes', 'name', 'TEXT');
   await ensureColumn(db, 'clothes', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
   await ensureColumn(db, 'clothes', 'cloud_error', 'TEXT');
   await ensureColumn(db, 'clothes', 'synced_at', 'DATETIME');
@@ -92,6 +94,7 @@ export async function insertClothingItem(item: NewClothingItem) {
       remote_image_url,
       remote_record_id,
       storage_path,
+      name,
       brand,
       category,
       seasons,
@@ -99,11 +102,12 @@ export async function insertClothingItem(item: NewClothingItem) {
       cloud_sync_status,
       cloud_error,
       synced_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     item.localImagePath,
     item.remoteImageUrl ?? null,
     item.remoteRecordId ?? null,
     item.storagePath ?? null,
+    item.name.trim(),
     item.brand.trim(),
     item.category,
     JSON.stringify(item.seasons),
@@ -111,6 +115,40 @@ export async function insertClothingItem(item: NewClothingItem) {
     item.cloudSyncStatus ?? 'local',
     item.cloudError ?? null,
     item.syncedAt ?? null,
+  );
+}
+
+export async function updateClothingItem(item: ClothingItem) {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `UPDATE clothes
+     SET local_image_path = ?,
+         remote_image_url = ?,
+         remote_record_id = ?,
+         storage_path = ?,
+         name = ?,
+         brand = ?,
+         category = ?,
+         seasons = ?,
+         color = ?,
+         cloud_sync_status = ?,
+         cloud_error = ?,
+         synced_at = ?
+     WHERE id = ?`,
+    item.localImagePath,
+    item.remoteImageUrl,
+    item.remoteRecordId,
+    item.storagePath,
+    item.name.trim(),
+    item.brand.trim(),
+    item.category,
+    JSON.stringify(item.seasons),
+    item.color,
+    item.cloudSyncStatus,
+    item.cloudError,
+    item.syncedAt,
+    item.id,
   );
 }
 
@@ -217,6 +255,7 @@ export async function importLocalBackupPayload(
       remoteImageUrl: item.remoteImageUrl,
       remoteRecordId: item.remoteRecordId,
       storagePath: item.storagePath,
+      name: item.name,
       brand: item.brand,
       category: item.category,
       seasons: item.seasons,
@@ -271,6 +310,7 @@ function mapClothingRow(row: ClothingRow): ClothingItem {
     remoteImageUrl: row.remote_image_url ?? null,
     remoteRecordId: row.remote_record_id ?? null,
     storagePath: row.storage_path ?? null,
+    name: row.name ?? row.brand ?? '',
     brand: row.brand ?? '',
     category: row.category,
     seasons: parseSeasons(row.seasons),

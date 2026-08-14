@@ -16,6 +16,7 @@ type LookbookieDatabase = {
           owner_id: string;
           remote_image_url: string;
           storage_path: string;
+          name: string | null;
           brand: string | null;
           category: ClothingCategory;
           seasons: Season[];
@@ -26,6 +27,7 @@ type LookbookieDatabase = {
           owner_id: string;
           remote_image_url: string;
           storage_path: string;
+          name?: string | null;
           brand?: string | null;
           category: ClothingCategory;
           seasons: Season[];
@@ -34,6 +36,7 @@ type LookbookieDatabase = {
         Update: {
           remote_image_url?: string;
           storage_path?: string;
+          name?: string | null;
           brand?: string | null;
           category?: ClothingCategory;
           seasons?: Season[];

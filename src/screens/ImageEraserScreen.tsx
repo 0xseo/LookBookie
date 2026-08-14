@@ -28,8 +28,10 @@ type EditorMessage =
 
 export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScreenProps) {
   const webViewRef = useRef<WebView>(null);
+  const brushOverlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [brushSize, setBrushSize] = useState(32);
+  const [showBrushOverlay, setShowBrushOverlay] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
@@ -53,6 +55,15 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
 
     loadImage();
   }, [imageUri, onCancel]);
+
+  useEffect(
+    () => () => {
+      if (brushOverlayTimer.current) {
+        clearTimeout(brushOverlayTimer.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (isReady) {
@@ -121,6 +132,19 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
     webViewRef.current?.injectJavaScript('window.exportCanvas(); true;');
   };
 
+  const updateBrushSize = (nextSize: number) => {
+    setBrushSize(nextSize);
+    setShowBrushOverlay(true);
+
+    if (brushOverlayTimer.current) {
+      clearTimeout(brushOverlayTimer.current);
+    }
+
+    brushOverlayTimer.current = setTimeout(() => {
+      setShowBrushOverlay(false);
+    }, 700);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -157,14 +181,11 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
         ) : (
           <ActivityIndicator color={COLORS.primary} />
         )}
-      </View>
-
-      <View style={styles.controls}>
-        <View style={styles.brushPreviewRow}>
-          <View style={styles.brushPreviewFrame}>
+        {showBrushOverlay ? (
+          <View pointerEvents="none" style={styles.brushOverlay}>
             <View
               style={[
-                styles.brushPreviewCircle,
+                styles.brushOverlayCircle,
                 {
                   width: brushSize,
                   height: brushSize,
@@ -172,7 +193,13 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
                 },
               ]}
             />
+            <Text style={styles.brushOverlayText}>{brushSize}px</Text>
           </View>
+        ) : null}
+      </View>
+
+      <View style={styles.controls}>
+        <View style={styles.controlHeader}>
           <View style={styles.brushTextGroup}>
             <Text style={styles.controlLabel}>브러시 크기</Text>
             <Text style={styles.controlCaption}>{brushSize}px</Text>
@@ -181,30 +208,30 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
             <Pressable
               onPress={undoCanvas}
               disabled={!canUndo}
-              style={[styles.controlButton, !canUndo && styles.controlButtonDisabled]}
+              style={[styles.iconButton, !canUndo && styles.controlButtonDisabled]}
               hitSlop={8}
             >
-              <Text style={styles.controlButtonText}>Undo</Text>
+              <Text style={styles.iconButtonText}>↶</Text>
             </Pressable>
             <Pressable
               onPress={redoCanvas}
               disabled={!canRedo}
-              style={[styles.controlButton, !canRedo && styles.controlButtonDisabled]}
+              style={[styles.iconButton, !canRedo && styles.controlButtonDisabled]}
               hitSlop={8}
             >
-              <Text style={styles.controlButtonText}>Redo</Text>
+              <Text style={styles.iconButtonText}>↷</Text>
             </Pressable>
-            <Pressable onPress={resetCanvas} style={styles.controlButton} hitSlop={8}>
-              <Text style={styles.controlButtonText}>Reset</Text>
+            <Pressable onPress={resetCanvas} style={styles.iconButton} hitSlop={8}>
+              <Text style={styles.iconButtonText}>↻</Text>
             </Pressable>
           </View>
         </View>
         <Slider
           value={brushSize}
           minimumValue={8}
-          maximumValue={96}
+          maximumValue={180}
           step={1}
-          onValueChange={setBrushSize}
+          onValueChange={updateBrushSize}
           minimumTrackTintColor={COLORS.primary}
           maximumTrackTintColor={COLORS.border}
           thumbTintColor={COLORS.accent}
@@ -522,6 +549,8 @@ const styles = StyleSheet.create({
   editorArea: {
     flex: 1,
     backgroundColor: COLORS.background,
+    alignItems: 'stretch',
+    justifyContent: 'center',
   },
   webView: {
     flex: 1,
@@ -534,24 +563,37 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     gap: 8,
   },
-  brushPreviewRow: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  brushPreviewFrame: {
-    width: 72,
-    height: 72,
-    borderRadius: 16,
+  brushOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.bubbleBg,
+    padding: 8,
   },
-  brushPreviewCircle: {
+  brushOverlayCircle: {
     borderWidth: 2,
     borderColor: COLORS.accent,
     backgroundColor: COLORS.secondary,
+  },
+  brushOverlayText: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: COLORS.surface,
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  controlHeader: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   brushTextGroup: {
     flex: 1,
@@ -573,9 +615,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 6,
   },
-  controlButton: {
+  iconButton: {
+    width: 44,
     minHeight: 44,
-    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -586,8 +628,8 @@ const styles = StyleSheet.create({
   controlButtonDisabled: {
     opacity: 0.4,
   },
-  controlButtonText: {
-    fontSize: 14,
+  iconButtonText: {
+    fontSize: 22,
     fontWeight: '700',
     color: COLORS.primary,
   },

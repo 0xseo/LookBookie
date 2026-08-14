@@ -20,3 +20,7 @@
 [2026-08-14] | [Phase 2] | Added eraser stroke history with Undo/Redo and stopped brush-size changes from reloading the canvas | Preserve manual transparent-background edits while adjusting brush size
 [2026-08-14] | [UX Fix] | Switched CodiBook sticker dragging to Animated position updates with final state commit on release | Make canvas item movement track the finger more naturally
 [2026-08-14] | [UX Fix] | Added One-piece category, persistent custom color palette tags, compact wardrobe category chips, and cancel confirmation for in-progress item registration | Match updated wardrobe metadata and navigation UX requirements
+[2026-08-14] | [UX Fix] | Added wardrobe detail editing with clothing name, image re-editing, and metadata updates | Let users revise individual wardrobe items after registration
+[2026-08-14] | [UX Fix] | Reworked wardrobe grid cards to contain images without cropping and show the brand below the image | Keep clothing photos visible and avoid overlay text covering items
+[2026-08-14] | [Phase 2] | Improved codi sticker resizing with animated draft size updates and moved eraser brush-size preview onto the image canvas with larger brush range and icon controls | Make canvas editing and background erasing feel more direct
+[2026-08-14] | [Phase 4] | Added a dedicated Friends tab, friend wardrobe/outfit views, cloud outfit sync on save, and Supabase policies for friend outfit reads | Move friend workflows out of MyPage and enable friend codi browsing

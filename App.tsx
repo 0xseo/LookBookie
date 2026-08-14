@@ -5,7 +5,9 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { BottomTabs, type AppTab } from './src/components/BottomTabs';
 import { COLORS } from './constants/colors';
 import { AddItemScreen, type AddItemScreenHandle } from './src/screens/AddItemScreen';
+import { ClothingDetailScreen } from './src/screens/ClothingDetailScreen';
 import { CodiBookScreen } from './src/screens/CodiBookScreen';
+import { FriendsScreen } from './src/screens/FriendsScreen';
 import { MyPageScreen } from './src/screens/MyPageScreen';
 import { WardrobeScreen } from './src/screens/WardrobeScreen';
 import {
@@ -31,10 +33,11 @@ import {
   addFriendByEmail,
   ensureCurrentProfile,
   listFriends,
+  listFriendOutfits,
   listFriendWardrobe,
 } from './src/services/friendsCloud';
 import type { CategoryFilter, ClothingItem } from './src/types/clothing';
-import type { FriendProfile, FriendWardrobeItem } from './src/types/friends';
+import type { FriendOutfit, FriendProfile, FriendWardrobeItem } from './src/types/friends';
 
 export default function App() {
   return (
@@ -50,6 +53,7 @@ function AppContent() {
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('전체');
   const [activeTab, setActiveTab] = useState<AppTab>('wardrobe');
   const [isAddVisible, setIsAddVisible] = useState(false);
+  const [selectedWardrobeItem, setSelectedWardrobeItem] = useState<ClothingItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [outfitsCount, setOutfitsCount] = useState(0);
   const [cloudSession, setCloudSession] = useState<CloudSession | null>(null);
@@ -60,6 +64,7 @@ function AppContent() {
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
   const [friendWardrobeItems, setFriendWardrobeItems] = useState<FriendWardrobeItem[]>([]);
+  const [friendOutfits, setFriendOutfits] = useState<FriendOutfit[]>([]);
   const addItemScreenRef = useRef<AddItemScreenHandle>(null);
   const tabBottomOffset = Math.max(8, insets.bottom);
   const tabBarInset = 80 + tabBottomOffset;
@@ -168,6 +173,7 @@ function AppContent() {
       setFriends([]);
       setSelectedFriend(null);
       setFriendWardrobeItems([]);
+      setFriendOutfits([]);
       return;
     }
 
@@ -192,6 +198,12 @@ function AppContent() {
 
   const handleSaved = async () => {
     setIsAddVisible(false);
+    await loadItems();
+    await loadCloudPendingCount();
+  };
+
+  const handleItemUpdated = async () => {
+    setSelectedWardrobeItem(null);
     await loadItems();
     await loadCloudPendingCount();
   };
@@ -318,10 +330,16 @@ function AppContent() {
     setSelectedFriend(friend);
 
     try {
-      setFriendWardrobeItems(await listFriendWardrobe(friend.id));
+      const [wardrobeItems, outfits] = await Promise.all([
+        listFriendWardrobe(friend.id),
+        listFriendOutfits(friend.id),
+      ]);
+
+      setFriendWardrobeItems(wardrobeItems);
+      setFriendOutfits(outfits);
     } catch (error) {
       Alert.alert(
-        '친구 옷장을 불러오지 못했어북',
+        '친구 데이터를 불러오지 못했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );
     } finally {
@@ -349,6 +367,7 @@ function AppContent() {
       for (const item of pendingItems) {
         const cloudState = await syncClothingItemToCloud({
           localImagePath: item.localImagePath,
+          name: item.name,
           brand: item.brand,
           category: item.category,
           seasons: item.seasons,
@@ -385,6 +404,7 @@ function AppContent() {
           isLoading={isLoading}
           bottomInset={tabBarInset}
           onSelectCategory={handleSelectCategory}
+          onItemPress={setSelectedWardrobeItem}
           onAddPress={() => setIsAddVisible(true)}
         />
       ) : null}
@@ -408,10 +428,6 @@ function AppContent() {
           cloudEmail={cloudSession?.user.email ?? null}
           isCloudBusy={isCloudBusy}
           isBackupBusy={isBackupBusy}
-          isFriendBusy={isFriendBusy}
-          friends={friends}
-          selectedFriend={selectedFriend}
-          friendWardrobeItems={friendWardrobeItems}
           bottomInset={tabBarInset}
           onSignIn={handleCloudSignIn}
           onSignUp={handleCloudSignUp}
@@ -419,8 +435,22 @@ function AppContent() {
           onSyncPending={handleSyncPending}
           onExportBackup={handleExportBackup}
           onImportBackup={handleImportBackup}
+        />
+      ) : null}
+
+      {activeTab === 'friends' ? (
+        <FriendsScreen
+          isCloudConfigured={isSupabaseConfigured}
+          cloudEmail={cloudSession?.user.email ?? null}
+          isFriendBusy={isFriendBusy}
+          friends={friends}
+          selectedFriend={selectedFriend}
+          friendWardrobeItems={friendWardrobeItems}
+          friendOutfits={friendOutfits}
+          bottomInset={tabBarInset}
           onAddFriend={handleAddFriend}
           onSelectFriend={handleSelectFriend}
+          onOpenProfile={() => setActiveTab('profile')}
         />
       ) : null}
 
@@ -441,6 +471,21 @@ function AppContent() {
           onCancel={() => setIsAddVisible(false)}
           onSaved={handleSaved}
         />
+      </Modal>
+
+      <Modal
+        visible={Boolean(selectedWardrobeItem)}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedWardrobeItem(null)}
+      >
+        {selectedWardrobeItem ? (
+          <ClothingDetailScreen
+            item={selectedWardrobeItem}
+            onClose={() => setSelectedWardrobeItem(null)}
+            onSaved={handleItemUpdated}
+          />
+        ) : null}
       </Modal>
     </View>
   );

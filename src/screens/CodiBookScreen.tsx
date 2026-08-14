@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
+import { syncOutfitToCloud } from '../services/outfitCloud';
 import { insertOutfit, listOutfits } from '../storage/database';
 import type { ClothingItem } from '../types/clothing';
 import type { Outfit, OutfitSticker } from '../types/outfit';
@@ -145,13 +146,24 @@ export function CodiBookScreen({
     setIsSaving(true);
 
     try {
+      const outfitName = `코디 ${outfits.length + 1}`;
       await insertOutfit({
-        name: `코디 ${outfits.length + 1}`,
+        name: outfitName,
         stickers,
+      });
+      const cloudResult = await syncOutfitToCloud({
+        name: outfitName,
+        stickers,
+        wardrobeItems: items,
       });
       await loadSavedOutfits();
       onOutfitSaved();
-      Alert.alert('저장했어북', '코디북에 새 코디를 저장했어요.');
+      Alert.alert(
+        '저장했어북',
+        cloudResult.synced
+          ? '코디북에 저장하고 친구가 볼 수 있게 클라우드에도 올렸어요.'
+          : '코디북에 로컬 저장했어요. 클라우드는 로그인 후 다시 저장하면 공유돼요.',
+      );
     } catch (error) {
       Alert.alert(
         '코디 저장에 실패했어북',
@@ -391,9 +403,12 @@ function CanvasSticker({
   onDelete,
 }: CanvasStickerProps) {
   const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
+  const sizeAnim = useRef(new Animated.Value(sticker.size)).current;
   const isDragging = useRef(false);
+  const isResizing = useRef(false);
   const dragStart = useRef({ x: sticker.x, y: sticker.y });
   const resizeStart = useRef(sticker.size);
+  const resizePositionStart = useRef({ x: sticker.x, y: sticker.y });
   const rotateStart = useRef(sticker.rotation);
 
   useEffect(() => {
@@ -401,6 +416,12 @@ function CanvasSticker({
       pan.setValue({ x: sticker.x, y: sticker.y });
     }
   }, [pan, sticker.x, sticker.y]);
+
+  useEffect(() => {
+    if (!isResizing.current) {
+      sizeAnim.setValue(sticker.size);
+    }
+  }, [sizeAnim, sticker.size]);
 
   const dragResponder = useMemo(
     () =>
@@ -451,7 +472,9 @@ function CanvasSticker({
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
           onSelect();
+          isResizing.current = true;
           resizeStart.current = sticker.size;
+          resizePositionStart.current = { x: sticker.x, y: sticker.y };
         },
         onPanResponderMove: (_, gesture) => {
           const nextSize = clamp(
@@ -459,15 +482,60 @@ function CanvasSticker({
             MIN_STICKER_SIZE,
             Math.max(MIN_STICKER_SIZE, Math.min(canvasSize.width || 240, canvasSize.height || 240)),
           );
+          const nextPosition = clampStickerPosition(
+            resizePositionStart.current.x,
+            resizePositionStart.current.y,
+            nextSize,
+            canvasSize,
+          );
 
+          sizeAnim.setValue(nextSize);
+          pan.setValue(nextPosition);
+        },
+        onPanResponderRelease: (_, gesture) => {
+          isResizing.current = false;
+          const nextSize = clamp(
+            resizeStart.current + Math.max(gesture.dx, gesture.dy),
+            MIN_STICKER_SIZE,
+            Math.max(MIN_STICKER_SIZE, Math.min(canvasSize.width || 240, canvasSize.height || 240)),
+          );
+          const nextPosition = clampStickerPosition(
+            resizePositionStart.current.x,
+            resizePositionStart.current.y,
+            nextSize,
+            canvasSize,
+          );
+
+          sizeAnim.setValue(nextSize);
+          pan.setValue(nextPosition);
           onChange({
             size: nextSize,
-            x: clamp(sticker.x, 0, Math.max(0, canvasSize.width - nextSize)),
-            y: clamp(sticker.y, 0, Math.max(0, canvasSize.height - nextSize)),
+            ...nextPosition,
+          });
+        },
+        onPanResponderTerminate: (_, gesture) => {
+          isResizing.current = false;
+          const nextSize = clamp(
+            resizeStart.current + Math.max(gesture.dx, gesture.dy),
+            MIN_STICKER_SIZE,
+            Math.max(MIN_STICKER_SIZE, Math.min(canvasSize.width || 240, canvasSize.height || 240)),
+          );
+          const nextPosition = clampStickerPosition(
+            resizePositionStart.current.x,
+            resizePositionStart.current.y,
+            nextSize,
+            canvasSize,
+          );
+
+          sizeAnim.setValue(nextSize);
+          pan.setValue(nextPosition);
+          onChange({
+            size: nextSize,
+            ...nextPosition,
           });
         },
       }),
-    [canvasSize.height, canvasSize.width, onChange, onSelect, sticker.size, sticker.x, sticker.y],
+    [canvasSize, onChange, onSelect, pan, sizeAnim, sticker.size, sticker.x, sticker.y],
   );
 
   const rotateResponder = useMemo(
@@ -495,8 +563,8 @@ function CanvasSticker({
       style={[
         styles.sticker,
         {
-          width: sticker.size,
-          height: sticker.size,
+          width: sizeAnim,
+          height: sizeAnim,
           zIndex: sticker.zIndex,
           transform: [
             { translateX: pan.x },
@@ -532,6 +600,13 @@ function CanvasSticker({
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function clampStickerPosition(x: number, y: number, size: number, canvasSize: CanvasSize) {
+  return {
+    x: clamp(x, 0, Math.max(0, canvasSize.width - size)),
+    y: clamp(y, 0, Math.max(0, canvasSize.height - size)),
+  };
 }
 
 const styles = StyleSheet.create({

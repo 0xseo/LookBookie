@@ -55,6 +55,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
     const [eraserSourceUri, setEraserSourceUri] = useState<string | null>(null);
+    const [name, setName] = useState('');
     const [brand, setBrand] = useState('');
     const [category, setCategory] = useState<ClothingCategory>('상의');
     const [seasons, setSeasons] = useState<Season[]>([]);
@@ -75,6 +76,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     const canAddCustomColor = /^#[0-9A-F]{6}$/.test(normalizedCustomColorValue);
     const hasDraft =
       Boolean(imageUri || cropSourceUri || eraserSourceUri || brand.trim()) ||
+      name.trim().length > 0 ||
       seasons.length > 0 ||
       category !== '상의' ||
       color !== '블랙' ||
@@ -252,6 +254,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
         const localImagePath = await saveWardrobeImage(processedImage.uri);
         const clothingItem = {
           localImagePath,
+          name: name.trim(),
           brand: brand.trim(),
           category,
           seasons,
@@ -326,6 +329,18 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
             {processingMessage ? (
               <Text style={styles.processingText}>{processingMessage}</Text>
             ) : null}
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>이름</Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="예: 흰 반팔 티셔츠"
+                placeholderTextColor={COLORS.textSecondary}
+                style={styles.input}
+                returnKeyType="done"
+              />
+            </View>
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>브랜드</Text>
