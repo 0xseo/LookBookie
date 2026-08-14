@@ -1,0 +1,14 @@
+export const COLORS = {
+  primary: '#3A5A40',
+  primaryLight: '#A3B18A',
+  secondary: '#E9EDC9',
+  accent: '#D4A373',
+  background: '#F8F9FA',
+  surface: '#FFFFFF',
+  canvasBg: '#FFFFFF',
+  textPrimary: '#1A1D1E',
+  textSecondary: '#6C757D',
+  border: '#E9ECEF',
+  danger: '#E63946',
+  bubbleBg: '#F1F5F9',
+} as const;

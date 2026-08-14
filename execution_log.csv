@@ -1,0 +1,5 @@
+[2026-08-14] | [Phase 1] | Expo TypeScript project scaffold, design tokens, local SQLite schema, wardrobe grid, add-item modal, image picker, local image copy, and SQLite insert/list flow implemented | Build offline-first wardrobe foundation for local clothing registration and 3-column browsing
+[2026-08-14] | [Phase 1] | Replaced optional expo-status-bar dependency with React Native StatusBar after npm ETARGET on expo-status-bar@~3.1.0 | Keep Phase 1 dependency set minimal and avoid a non-existent package version
+[2026-08-14] | [Phase 1] | Added missing babel-preset-expo devDependency after Metro could not resolve the Expo Babel preset | Allow Expo Metro bundler to start with the standard Babel config
+[2026-08-14] | [Phase 1] | Updated react-native and TypeScript package versions to Expo SDK compatibility check expectations | Keep the generated Expo app aligned with SDK-managed dependency versions
+[2026-08-14] | [Phase 1] | Added Expo/Node project .gitignore entries | Keep generated dependencies and local bundler state out of source tracking
