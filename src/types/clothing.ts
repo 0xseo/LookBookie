@@ -1,3 +1,5 @@
+import type { CloudSyncStatus } from './sync';
+
 export const CLOTHING_CATEGORIES = ['상의', '하의', '아우터', '신발', '악세사리'] as const;
 export const CATEGORY_FILTERS = ['전체', ...CLOTHING_CATEGORIES] as const;
 export const SEASONS = ['봄', '여름', '가을', '겨울'] as const;
@@ -21,17 +23,29 @@ export type ClothingColor = (typeof COLOR_OPTIONS)[number]['label'];
 export type ClothingItem = {
   id: number;
   localImagePath: string;
+  remoteImageUrl: string | null;
+  remoteRecordId: string | null;
+  storagePath: string | null;
   brand: string;
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;
   createdAt: string;
+  cloudSyncStatus: CloudSyncStatus;
+  cloudError: string | null;
+  syncedAt: string | null;
 };
 
 export type NewClothingItem = {
   localImagePath: string;
+  remoteImageUrl?: string | null;
+  remoteRecordId?: string | null;
+  storagePath?: string | null;
   brand: string;
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;
+  cloudSyncStatus?: CloudSyncStatus;
+  cloudError?: string | null;
+  syncedAt?: string | null;
 };

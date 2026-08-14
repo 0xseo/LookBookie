@@ -9,6 +9,7 @@ import type {
   NewClothingItem,
   Season,
 } from '../types/clothing';
+import type { ClothingCloudFields, CloudSyncStatus } from '../types/sync';
 import type { NewOutfit, Outfit, OutfitSticker } from '../types/outfit';
 
 const DATABASE_NAME = 'lookbookie.db';
@@ -16,11 +17,17 @@ const DATABASE_NAME = 'lookbookie.db';
 type ClothingRow = {
   id: number;
   local_image_path: string;
+  remote_image_url: string | null;
+  remote_record_id: string | null;
+  storage_path: string | null;
   brand: string | null;
   category: ClothingCategory;
   seasons: string | null;
   color: ClothingColor;
   created_at: string;
+  cloud_sync_status: CloudSyncStatus | null;
+  cloud_error: string | null;
+  synced_at: string | null;
 };
 
 type OutfitRow = {
@@ -28,6 +35,10 @@ type OutfitRow = {
   name: string;
   stickers: string;
   created_at: string;
+};
+
+type TableColumn = {
+  name: string;
 };
 
 let dbPromise: Promise<SQLiteDatabase> | null = null;
@@ -62,6 +73,13 @@ export async function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  await ensureColumn(db, 'clothes', 'remote_image_url', 'TEXT');
+  await ensureColumn(db, 'clothes', 'remote_record_id', 'TEXT');
+  await ensureColumn(db, 'clothes', 'storage_path', 'TEXT');
+  await ensureColumn(db, 'clothes', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
+  await ensureColumn(db, 'clothes', 'cloud_error', 'TEXT');
+  await ensureColumn(db, 'clothes', 'synced_at', 'DATETIME');
 }
 
 export async function insertClothingItem(item: NewClothingItem) {
@@ -70,16 +88,28 @@ export async function insertClothingItem(item: NewClothingItem) {
   await db.runAsync(
     `INSERT INTO clothes (
       local_image_path,
+      remote_image_url,
+      remote_record_id,
+      storage_path,
       brand,
       category,
       seasons,
-      color
-    ) VALUES (?, ?, ?, ?, ?)`,
+      color,
+      cloud_sync_status,
+      cloud_error,
+      synced_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     item.localImagePath,
+    item.remoteImageUrl ?? null,
+    item.remoteRecordId ?? null,
+    item.storagePath ?? null,
     item.brand.trim(),
     item.category,
     JSON.stringify(item.seasons),
     item.color,
+    item.cloudSyncStatus ?? 'local',
+    item.cloudError ?? null,
+    item.syncedAt ?? null,
   );
 }
 
@@ -125,15 +155,65 @@ export async function countOutfits() {
   return row?.count ?? 0;
 }
 
+export async function listCloudPendingClothingItems() {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<ClothingRow>(
+    `SELECT * FROM clothes
+     WHERE cloud_sync_status IN ('pending', 'failed')
+     ORDER BY datetime(created_at) ASC, id ASC`,
+  );
+
+  return rows.map(mapClothingRow);
+}
+
+export async function countCloudPendingClothingItems() {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count
+     FROM clothes
+     WHERE cloud_sync_status IN ('pending', 'failed')`,
+  );
+
+  return row?.count ?? 0;
+}
+
+export async function updateClothingCloudState(id: number, fields: ClothingCloudFields) {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    `UPDATE clothes
+     SET remote_image_url = ?,
+         remote_record_id = ?,
+         storage_path = ?,
+         cloud_sync_status = ?,
+         cloud_error = ?,
+         synced_at = ?
+     WHERE id = ?`,
+    fields.remoteImageUrl,
+    fields.remoteRecordId,
+    fields.storagePath,
+    fields.cloudSyncStatus,
+    fields.cloudError,
+    fields.syncedAt,
+    id,
+  );
+}
+
 function mapClothingRow(row: ClothingRow): ClothingItem {
   return {
     id: row.id,
     localImagePath: row.local_image_path,
+    remoteImageUrl: row.remote_image_url ?? null,
+    remoteRecordId: row.remote_record_id ?? null,
+    storagePath: row.storage_path ?? null,
     brand: row.brand ?? '',
     category: row.category,
     seasons: parseSeasons(row.seasons),
     color: row.color,
     createdAt: row.created_at,
+    cloudSyncStatus: row.cloud_sync_status ?? 'local',
+    cloudError: row.cloud_error ?? null,
+    syncedAt: row.synced_at ?? null,
   };
 }
 
@@ -168,4 +248,19 @@ function parseStickers(value: string): OutfitSticker[] {
   } catch {
     return [];
   }
+}
+
+async function ensureColumn(
+  db: SQLiteDatabase,
+  tableName: 'clothes',
+  columnName: string,
+  definition: string,
+) {
+  const columns = await db.getAllAsync<TableColumn>(`PRAGMA table_info(${tableName})`);
+
+  if (columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  await db.execAsync(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition};`);
 }

@@ -6,3 +6,6 @@
 [2026-08-14] | [Phase 2] | Added bottom tab app shell for Wardrobe, CodiBook, and MyPage; added local outfits table and codi canvas screens | Separate closet browsing from outfit composition and prepare the app for styling workflows
 [2026-08-14] | [Phase 2] | Added Expo image manipulation and slider dependencies plus local PNG compression pipeline in clothing registration | Start the on-device image processing path while keeping Expo emulator compatibility
 [2026-08-14] | [Phase 2] | Implemented codi canvas sticker add, drag, resize, rotate, delete, layer-forward, reset, save, and restore flows | Let users compose saved outfits from locally stored wardrobe items without network access
+[2026-08-14] | [Phase 3] | Applied LookBookie Supabase schema, RLS policies, and clothes storage bucket migration | Prepare cloud database and storage for authenticated wardrobe backups
+[2026-08-14] | [Phase 3] | Added Supabase env setup, React Native client, auth helpers, and clothing cloud upload service | Connect local-first wardrobe registration to optional cloud sync
+[2026-08-14] | [Phase 3] | Added owner_id indexes and optimized RLS policies after Supabase performance advisor warnings | Keep authenticated cloud queries scalable as wardrobe and outfit data grows

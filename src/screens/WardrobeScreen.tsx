@@ -113,6 +113,9 @@ export function WardrobeScreen({
                 ]}
               >
                 <Image source={{ uri: item.localImagePath }} style={styles.itemImage} />
+                <View style={[styles.syncPill, getSyncPillStyle(item.cloudSyncStatus)]}>
+                  <Text style={styles.syncText}>{getSyncLabel(item.cloudSyncStatus)}</Text>
+                </View>
                 {item.brand ? (
                   <View style={styles.brandPill}>
                     <Text style={styles.brandText} numberOfLines={1}>
@@ -132,6 +135,38 @@ export function WardrobeScreen({
       </View>
     </SafeAreaView>
   );
+}
+
+function getSyncLabel(status: ClothingItem['cloudSyncStatus']) {
+  if (status === 'synced') {
+    return '클라우드';
+  }
+
+  if (status === 'pending') {
+    return '대기';
+  }
+
+  if (status === 'failed') {
+    return '실패';
+  }
+
+  return '로컬';
+}
+
+function getSyncPillStyle(status: ClothingItem['cloudSyncStatus']) {
+  if (status === 'synced') {
+    return styles.syncPillSynced;
+  }
+
+  if (status === 'failed') {
+    return styles.syncPillFailed;
+  }
+
+  if (status === 'pending') {
+    return styles.syncPillPending;
+  }
+
+  return styles.syncPillLocal;
 }
 
 function EmptyWardrobe() {
@@ -249,6 +284,33 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     resizeMode: 'cover',
+  },
+  syncPill: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    minHeight: 24,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncPillSynced: {
+    backgroundColor: COLORS.primary,
+  },
+  syncPillFailed: {
+    backgroundColor: COLORS.danger,
+  },
+  syncPillPending: {
+    backgroundColor: COLORS.accent,
+  },
+  syncPillLocal: {
+    backgroundColor: COLORS.textSecondary,
+  },
+  syncText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.surface,
   },
   brandPill: {
     position: 'absolute',

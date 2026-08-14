@@ -19,6 +19,7 @@ import Slider from '@react-native-community/slider';
 import { COLORS } from '../../constants/colors';
 import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage';
 import { insertClothingItem } from '../storage/database';
+import { syncClothingItemToCloud } from '../services/wardrobeCloud';
 import {
   CLOTHING_CATEGORIES,
   COLOR_OPTIONS,
@@ -161,13 +162,17 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
       setProcessingMessage('옷장에 넣기 전에 이미지를 정리하고 있어북...');
       const processedImage = await processWardrobeImage(imageUri);
       const localImagePath = await saveWardrobeImage(processedImage.uri);
-
-      await insertClothingItem({
+      const clothingItem = {
         localImagePath,
         brand,
         category,
         seasons,
         color,
+      };
+
+      await insertClothingItem({
+        ...clothingItem,
+        ...(await syncClothingItemToCloud(clothingItem)),
       });
 
       onSaved();
