@@ -264,7 +264,12 @@ export function FriendsScreen({
                             canvasWidth={outfit.canvasWidth}
                             canvasHeight={outfit.canvasHeight}
                           />
-                          <Text style={styles.outfitName}>{outfit.name}</Text>
+                          <View style={styles.outfitLabel}>
+                            <Text style={styles.outfitName}>{outfit.name}</Text>
+                            {outfit.seasons.length > 0 ? (
+                              <Text style={styles.outfitSeasons}>{outfit.seasons.join(' · ')}</Text>
+                            ) : null}
+                          </View>
                         </View>
                       ))
                     )}
@@ -670,14 +675,22 @@ const styles = StyleSheet.create({
     height: 88,
     resizeMode: 'contain',
   },
-  outfitName: {
+  outfitLabel: {
     minHeight: 40,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+  },
+  outfitName: {
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+  outfitSeasons: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
 });

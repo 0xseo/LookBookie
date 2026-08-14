@@ -50,6 +50,7 @@ export type FriendOutfit = {
   id: string;
   ownerId: string;
   name: string;
+  seasons: Season[];
   stickers: FriendOutfitSticker[];
   canvasWidth: number | null;
   canvasHeight: number | null;

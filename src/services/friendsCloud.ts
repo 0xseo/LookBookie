@@ -267,7 +267,7 @@ export async function listFriendOutfits(friendId: string): Promise<FriendOutfit[
 
   const { data, error } = await client
     .from('outfits')
-    .select('id,owner_id,name,stickers,canvas_width,canvas_height,created_at')
+    .select('id,owner_id,name,seasons,stickers,canvas_width,canvas_height,created_at')
     .eq('owner_id', friendId)
     .order('created_at', { ascending: false });
 
@@ -279,6 +279,7 @@ export async function listFriendOutfits(friendId: string): Promise<FriendOutfit[
     id: outfit.id,
     ownerId: outfit.owner_id,
     name: outfit.name,
+    seasons: outfit.seasons,
     stickers: parseFriendOutfitStickers(outfit.stickers),
     canvasWidth: outfit.canvas_width,
     canvasHeight: outfit.canvas_height,

@@ -96,6 +96,7 @@ type LookbookieDatabase = {
           id: string;
           owner_id: string;
           name: string;
+          seasons: Season[];
           stickers: unknown;
           canvas_width: number | null;
           canvas_height: number | null;
@@ -104,12 +105,14 @@ type LookbookieDatabase = {
         Insert: {
           owner_id: string;
           name: string;
+          seasons?: Season[];
           stickers: unknown;
           canvas_width?: number | null;
           canvas_height?: number | null;
         };
         Update: {
           name?: string;
+          seasons?: Season[];
           stickers?: unknown;
           canvas_width?: number | null;
           canvas_height?: number | null;

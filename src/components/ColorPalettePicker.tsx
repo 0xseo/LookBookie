@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { COLORS } from '../../constants/colors';
@@ -39,10 +39,16 @@ export function ColorPalettePicker({
   const [customColorValue, setCustomColorValue] = useState('#');
   const [customColorFamily, setCustomColorFamily] = useState<ColorFamily>('black');
   const [editingColorLabel, setEditingColorLabel] = useState<string | null>(null);
+  const [paletteExpanded, setPaletteExpanded] = useState(false);
   const colorOptions = mergeColorOptions([...COLOR_OPTIONS, ...customColorOptions]);
   const normalizedCustomColorValue = customColorValue.toUpperCase();
   const normalizedHex = normalizeHex(normalizedCustomColorValue);
   const canSaveCustomColor = Boolean(normalizedHex);
+  const paletteCollapsed = Boolean(suggestedColorOption) && !paletteExpanded && !editingColorLabel;
+
+  useEffect(() => {
+    setPaletteExpanded(false);
+  }, [suggestedColorOption?.label, extractedColorHex]);
 
   const saveCustomColor = async () => {
     const label = customColorLabel.trim() || normalizedCustomColorValue;
@@ -165,137 +171,149 @@ export function ColorPalettePicker({
         </View>
       ) : null}
 
-      <View style={styles.chipWrap}>
-        {colorOptions.map((option) => {
-          const selected = selectedColor === option.label;
-          const custom = customColorOptions.some(
-            (customOption) => customOption.label === option.label,
-          );
+      {paletteCollapsed ? (
+        <Pressable
+          onPress={() => setPaletteExpanded(true)}
+          style={styles.expandPaletteButton}
+          hitSlop={8}
+        >
+          <Text style={styles.expandPaletteButtonText}>다른 색 직접 고르기</Text>
+        </Pressable>
+      ) : (
+        <>
+          <View style={styles.chipWrap}>
+            {colorOptions.map((option) => {
+              const selected = selectedColor === option.label;
+              const custom = customColorOptions.some(
+                (customOption) => customOption.label === option.label,
+              );
 
-          return (
-            <View
-              key={`${option.label}-${option.value}`}
-              style={[styles.colorChipFrame, selected && styles.choiceChipSelected]}
-            >
-              <Pressable
-                onPress={() => onSelectColor(option.label, option)}
-                style={styles.colorSelectButton}
-                hitSlop={8}
-              >
+              return (
+                <View
+                  key={`${option.label}-${option.value}`}
+                  style={[styles.colorChipFrame, selected && styles.choiceChipSelected]}
+                >
+                  <Pressable
+                    onPress={() => onSelectColor(option.label, option)}
+                    style={styles.colorSelectButton}
+                    hitSlop={8}
+                  >
+                    <View
+                      style={[
+                        styles.colorSwatch,
+                        {
+                          backgroundColor: option.value,
+                          borderColor: option.value === '#FFFFFF' ? COLORS.border : option.value,
+                        },
+                      ]}
+                    />
+                    <View>
+                      <Text style={[styles.choiceChipText, selected && styles.choiceChipTextSelected]}>
+                        {option.label}
+                      </Text>
+                      <Text style={styles.familyText}>{getColorFamilyLabel(option.family)}</Text>
+                    </View>
+                  </Pressable>
+                  {custom ? (
+                    <View style={styles.colorTools}>
+                      <Pressable
+                        onPress={() => editCustomColor(option)}
+                        style={styles.iconButton}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.iconButtonText}>✎</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => deleteCustomColor(option)}
+                        style={styles.iconButton}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.iconButtonText}>×</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+
+          <View style={styles.customColorPanel}>
+            <Text style={styles.smallLabel}>{editingColorLabel ? '색 수정' : '내 색 추가'}</Text>
+            <View style={styles.customColorInputs}>
+              <TextInput
+                value={customColorLabel}
+                onChangeText={setCustomColorLabel}
+                placeholder="색 이름"
+                placeholderTextColor={COLORS.textSecondary}
+                style={[styles.input, styles.colorNameInput]}
+                returnKeyType="done"
+              />
+              <View style={styles.hexInput}>
                 <View
                   style={[
                     styles.colorSwatch,
                     {
-                      backgroundColor: option.value,
-                      borderColor: option.value === '#FFFFFF' ? COLORS.border : option.value,
+                      backgroundColor: canSaveCustomColor
+                        ? normalizedCustomColorValue
+                        : COLORS.surface,
                     },
                   ]}
                 />
-                <View>
-                  <Text style={[styles.choiceChipText, selected && styles.choiceChipTextSelected]}>
-                    {option.label}
-                  </Text>
-                  <Text style={styles.familyText}>{getColorFamilyLabel(option.family)}</Text>
-                </View>
-              </Pressable>
-              {custom ? (
-                <View style={styles.colorTools}>
-                  <Pressable
-                    onPress={() => editCustomColor(option)}
-                    style={styles.iconButton}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.iconButtonText}>✎</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => deleteCustomColor(option)}
-                    style={styles.iconButton}
-                    hitSlop={8}
-                  >
-                    <Text style={styles.iconButtonText}>×</Text>
-                  </Pressable>
-                </View>
-              ) : null}
+                <TextInput
+                  value={customColorValue}
+                  onChangeText={updateHexInput}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  placeholder="#AABBCC"
+                  placeholderTextColor={COLORS.textSecondary}
+                  style={styles.hexTextInput}
+                  returnKeyType="done"
+                />
+              </View>
             </View>
-          );
-        })}
-      </View>
 
-      <View style={styles.customColorPanel}>
-        <Text style={styles.smallLabel}>{editingColorLabel ? '색 수정' : '내 색 추가'}</Text>
-        <View style={styles.customColorInputs}>
-          <TextInput
-            value={customColorLabel}
-            onChangeText={setCustomColorLabel}
-            placeholder="색 이름"
-            placeholderTextColor={COLORS.textSecondary}
-            style={[styles.input, styles.colorNameInput]}
-            returnKeyType="done"
-          />
-          <View style={styles.hexInput}>
-            <View
-              style={[
-                styles.colorSwatch,
-                {
-                  backgroundColor: canSaveCustomColor
-                    ? normalizedCustomColorValue
-                    : COLORS.surface,
-                },
-              ]}
-            />
-            <TextInput
-              value={customColorValue}
-              onChangeText={updateHexInput}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              placeholder="#AABBCC"
-              placeholderTextColor={COLORS.textSecondary}
-              style={styles.hexTextInput}
-              returnKeyType="done"
-            />
-          </View>
-        </View>
+            <View style={styles.familyPicker}>
+              <Text style={styles.smallCaption}>검색 그룹</Text>
+              <View style={styles.familyChipWrap}>
+                {COLOR_FAMILY_OPTIONS.map((option) => {
+                  const selected = customColorFamily === option.family;
 
-        <View style={styles.familyPicker}>
-          <Text style={styles.smallCaption}>검색 그룹</Text>
-          <View style={styles.familyChipWrap}>
-            {COLOR_FAMILY_OPTIONS.map((option) => {
-              const selected = customColorFamily === option.family;
+                  return (
+                    <Pressable
+                      key={option.family}
+                      onPress={() => setCustomColorFamily(option.family)}
+                      style={[styles.familyChip, selected && styles.familyChipSelected]}
+                      hitSlop={8}
+                    >
+                      <Text style={[styles.familyChipText, selected && styles.familyChipTextSelected]}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
 
-              return (
-                <Pressable
-                  key={option.family}
-                  onPress={() => setCustomColorFamily(option.family)}
-                  style={[styles.familyChip, selected && styles.familyChipSelected]}
-                  hitSlop={8}
-                >
-                  <Text style={[styles.familyChipText, selected && styles.familyChipTextSelected]}>
-                    {option.label}
-                  </Text>
+            <View style={styles.customColorActions}>
+              {editingColorLabel ? (
+                <Pressable onPress={resetForm} style={styles.secondaryButton} hitSlop={8}>
+                  <Text style={styles.secondaryButtonText}>취소</Text>
                 </Pressable>
-              );
-            })}
+              ) : null}
+              <Pressable
+                onPress={saveCustomColor}
+                disabled={!canSaveCustomColor}
+                style={[styles.addColorButton, !canSaveCustomColor && styles.mutedButton]}
+                hitSlop={8}
+              >
+                <Text style={styles.addColorButtonText}>
+                  {editingColorLabel ? '수정 저장' : '팔레트에 추가'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
-
-        <View style={styles.customColorActions}>
-          {editingColorLabel ? (
-            <Pressable onPress={resetForm} style={styles.secondaryButton} hitSlop={8}>
-              <Text style={styles.secondaryButtonText}>취소</Text>
-            </Pressable>
-          ) : null}
-          <Pressable
-            onPress={saveCustomColor}
-            disabled={!canSaveCustomColor}
-            style={[styles.addColorButton, !canSaveCustomColor && styles.mutedButton]}
-            hitSlop={8}
-          >
-            <Text style={styles.addColorButtonText}>
-              {editingColorLabel ? '수정 저장' : '팔레트에 추가'}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+        </>
+      )}
     </View>
   );
 }
@@ -347,6 +365,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.surface,
+  },
+  expandPaletteButton: {
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  expandPaletteButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   chipWrap: {
     flexDirection: 'row',

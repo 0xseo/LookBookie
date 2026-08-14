@@ -24,8 +24,10 @@ import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
 import { clothingMatchesSearch } from '../services/colorSearch';
 import {
   CATEGORY_FILTERS,
+  SEASONS,
   type CategoryFilter,
   type ClothingItem,
+  type Season,
 } from '../types/clothing';
 import type { Outfit, OutfitSticker } from '../types/outfit';
 
@@ -63,6 +65,7 @@ export function CodiBookScreen({
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [editingOutfitId, setEditingOutfitId] = useState<number | null>(null);
   const [editingOutfitName, setEditingOutfitName] = useState('');
+  const [editingOutfitSeasons, setEditingOutfitSeasons] = useState<Season[]>([]);
   const [canvasSize, setCanvasSize] = useState<CanvasSize>({ width: 0, height: 0 });
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [pickerCategory, setPickerCategory] = useState<CategoryFilter>('전체');
@@ -121,6 +124,7 @@ export function CodiBookScreen({
   const openNewPicker = () => {
     setEditingOutfitId(null);
     setEditingOutfitName('');
+    setEditingOutfitSeasons([]);
     setStickers([]);
     setSelectedStickerId(null);
     setPickerCategory('전체');
@@ -137,6 +141,7 @@ export function CodiBookScreen({
 
     setEditingOutfitId(outfit.id);
     setEditingOutfitName(outfit.name);
+    setEditingOutfitSeasons(outfit.seasons);
     setStickers(restoredStickers);
     setSelectedStickerId(restoredStickers[restoredStickers.length - 1]?.id ?? null);
     setMode('canvas');
@@ -190,6 +195,14 @@ export function CodiBookScreen({
     updateSticker(selectedSticker.id, { zIndex: topZIndex + 1 });
   };
 
+  const toggleOutfitSeason = (season: Season) => {
+    setEditingOutfitSeasons((current) =>
+      current.includes(season)
+        ? current.filter((currentSeason) => currentSeason !== season)
+        : [...current, season],
+    );
+  };
+
   const saveOutfit = async () => {
     if (stickers.length === 0) {
       Alert.alert('저장할 코디가 없어북', '옷을 먼저 선택해 주세요.');
@@ -205,6 +218,7 @@ export function CodiBookScreen({
         await updateOutfit({
           id: editingOutfitId,
           name: outfitName,
+          seasons: editingOutfitSeasons,
           stickers,
           canvasWidth: canvasSize.width || null,
           canvasHeight: canvasSize.height || null,
@@ -213,6 +227,7 @@ export function CodiBookScreen({
       } else {
         await insertOutfit({
           name: outfitName,
+          seasons: editingOutfitSeasons,
           stickers,
           canvasWidth: canvasSize.width || null,
           canvasHeight: canvasSize.height || null,
@@ -221,6 +236,7 @@ export function CodiBookScreen({
 
       const cloudResult = await syncOutfitToCloud({
         name: outfitName,
+        seasons: editingOutfitSeasons,
         stickers,
         wardrobeItems: items,
         canvasWidth: canvasSize.width || null,
@@ -394,6 +410,35 @@ export function CodiBookScreen({
 
         {mode === 'canvas' ? (
           <View style={styles.screenBody}>
+            <View style={styles.canvasMetaPanel}>
+              <TextInput
+                value={editingOutfitName}
+                onChangeText={setEditingOutfitName}
+                placeholder="코디 이름"
+                placeholderTextColor={COLORS.textSecondary}
+                style={styles.outfitNameInput}
+                returnKeyType="done"
+              />
+              <View style={styles.seasonChipRow}>
+                {SEASONS.map((season) => {
+                  const selected = editingOutfitSeasons.includes(season);
+
+                  return (
+                    <Pressable
+                      key={season}
+                      onPress={() => toggleOutfitSeason(season)}
+                      style={[styles.seasonChip, selected && styles.seasonChipSelected]}
+                      hitSlop={8}
+                    >
+                      <Text style={[styles.seasonChipText, selected && styles.seasonChipTextSelected]}>
+                        {season}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
             <View style={styles.canvasActions}>
               <Pressable onPress={() => setMode('picker')} style={styles.secondaryButton} hitSlop={8}>
                 <Text style={styles.secondaryButtonText}>옷 추가</Text>
@@ -517,6 +562,11 @@ function OutfitList({ outfits, tileSize, bottomInset, onSelect, onAdd }: OutfitL
               {item.name}
             </Text>
             <Text style={styles.outfitMeta}>{item.stickers.length}개</Text>
+            {item.seasons.length > 0 ? (
+              <Text style={styles.outfitSeasons} numberOfLines={1}>
+                {item.seasons.join(' · ')}
+              </Text>
+            ) : null}
           </View>
         </Pressable>
       )}
@@ -968,8 +1018,9 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   outfitLabelRow: {
-    minHeight: 42,
+    minHeight: 56,
     paddingHorizontal: 8,
+    paddingVertical: 8,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     justifyContent: 'center',
@@ -984,6 +1035,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.textSecondary,
+  },
+  outfitSeasons: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   pickerControls: {
     paddingHorizontal: 16,
@@ -1165,6 +1222,49 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
+  canvasMetaPanel: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  outfitNameInput: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  seasonChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  seasonChip: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  seasonChipSelected: {
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.secondary,
+  },
+  seasonChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  seasonChipTextSelected: {
+    color: COLORS.primary,
+  },
   canvas: {
     flex: 1,
     marginHorizontal: 16,
@@ -1207,15 +1307,10 @@ const styles = StyleSheet.create({
   stickerTouch: {
     width: '100%',
     height: '100%',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
     overflow: 'hidden',
   },
   stickerTouchSelected: {
-    borderColor: COLORS.accent,
-    borderWidth: 2,
+    opacity: 0.96,
   },
   stickerImage: {
     width: '100%',

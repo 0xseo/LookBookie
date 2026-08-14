@@ -1,9 +1,10 @@
-import type { ClothingItem } from '../types/clothing';
+import type { ClothingItem, Season } from '../types/clothing';
 import type { OutfitSticker } from '../types/outfit';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
 
 type SyncOutfitInput = {
   name: string;
+  seasons: Season[];
   stickers: OutfitSticker[];
   wardrobeItems: ClothingItem[];
   canvasWidth: number | null;
@@ -18,6 +19,7 @@ type SyncOutfitResult = {
 
 export async function syncOutfitToCloud({
   name,
+  seasons,
   stickers,
   wardrobeItems,
   canvasWidth,
@@ -63,6 +65,7 @@ export async function syncOutfitToCloud({
   const { error } = await supabase.from('outfits').insert({
     owner_id: session.user.id,
     name,
+    seasons,
     stickers: cloudStickers,
     canvas_width: canvasWidth,
     canvas_height: canvasHeight,

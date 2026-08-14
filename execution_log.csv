@@ -32,3 +32,6 @@
 [2026-08-14] | [Phase 2] | Added pinch-to-zoom crop gestures and representative color extraction through a hidden WebView canvas sampler | Make image editing more direct and reduce manual color entry
 [2026-08-14] | [UX Fix] | Expanded color palette data to include HEX values and searchable color families with editable custom family selection | Support color-family search such as red matching red-adjacent wardrobe items
 [2026-08-14] | [Phase 4] | Reworked friends into pending requests, incoming accept/decline UX, and accepted-only wardrobe/outfit read policies | Require consent before another account can browse shared wardrobe data
+[2026-08-14] | [UX Fix] | Collapsed manual color palettes behind the automatic recommendation until the user asks to pick another color | Keep the metadata form focused after representative color extraction
+[2026-08-14] | [Phase 2] | Removed CodiBook sticker borders and added codi name plus season chips to the canvas editor and saved outfit cards | Let users save clearer codi metadata without visual frames around placed clothes
+[2026-08-14] | [Phase 3] | Added local and Supabase outfit seasons storage with a database migration and friend outfit read mapping | Keep codi season metadata available offline and in shared friend outfit views

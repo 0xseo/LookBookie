@@ -39,6 +39,7 @@ type ClothingRow = {
 type OutfitRow = {
   id: number;
   name: string;
+  seasons: string | null;
   stickers: string;
   canvas_width: number | null;
   canvas_height: number | null;
@@ -93,6 +94,7 @@ export async function initDatabase() {
   await ensureColumn(db, 'clothes', 'synced_at', 'DATETIME');
   await ensureColumn(db, 'outfits', 'canvas_width', 'REAL');
   await ensureColumn(db, 'outfits', 'canvas_height', 'REAL');
+  await ensureColumn(db, 'outfits', 'seasons', "TEXT NOT NULL DEFAULT '[]'");
 }
 
 export async function insertClothingItem(item: NewClothingItem) {
@@ -196,8 +198,9 @@ export async function insertOutfit(outfit: NewOutfit) {
   const db = await getDatabase();
 
   await db.runAsync(
-    'INSERT INTO outfits (name, stickers, canvas_width, canvas_height) VALUES (?, ?, ?, ?)',
+    'INSERT INTO outfits (name, seasons, stickers, canvas_width, canvas_height) VALUES (?, ?, ?, ?, ?)',
     outfit.name,
+    JSON.stringify(outfit.seasons),
     JSON.stringify(outfit.stickers),
     outfit.canvasWidth ?? null,
     outfit.canvasHeight ?? null,
@@ -208,8 +211,9 @@ export async function updateOutfit(outfit: Outfit) {
   const db = await getDatabase();
 
   await db.runAsync(
-    'UPDATE outfits SET name = ?, stickers = ?, canvas_width = ?, canvas_height = ? WHERE id = ?',
+    'UPDATE outfits SET name = ?, seasons = ?, stickers = ?, canvas_width = ?, canvas_height = ? WHERE id = ?',
     outfit.name,
+    JSON.stringify(outfit.seasons),
     JSON.stringify(outfit.stickers),
     outfit.canvasWidth ?? null,
     outfit.canvasHeight ?? null,
@@ -318,6 +322,7 @@ export async function importLocalBackupPayload(
   for (const outfit of payload.outfits) {
     await insertOutfit({
       name: outfit.name,
+      seasons: outfit.seasons ?? [],
       stickers: outfit.stickers,
       canvasWidth: outfit.canvasWidth,
       canvasHeight: outfit.canvasHeight,
@@ -396,6 +401,7 @@ function mapOutfitRow(row: OutfitRow): Outfit {
   return {
     id: row.id,
     name: row.name,
+    seasons: parseSeasons(row.seasons),
     stickers: parseStickers(row.stickers),
     canvasWidth: row.canvas_width ?? null,
     canvasHeight: row.canvas_height ?? null,
