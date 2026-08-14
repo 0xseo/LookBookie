@@ -3,3 +3,6 @@
 [2026-08-14] | [Phase 1] | Added missing babel-preset-expo devDependency after Metro could not resolve the Expo Babel preset | Allow Expo Metro bundler to start with the standard Babel config
 [2026-08-14] | [Phase 1] | Updated react-native and TypeScript package versions to Expo SDK compatibility check expectations | Keep the generated Expo app aligned with SDK-managed dependency versions
 [2026-08-14] | [Phase 1] | Added Expo/Node project .gitignore entries | Keep generated dependencies and local bundler state out of source tracking
+[2026-08-14] | [Phase 2] | Added bottom tab app shell for Wardrobe, CodiBook, and MyPage; added local outfits table and codi canvas screens | Separate closet browsing from outfit composition and prepare the app for styling workflows
+[2026-08-14] | [Phase 2] | Added Expo image manipulation and slider dependencies plus local PNG compression pipeline in clothing registration | Start the on-device image processing path while keeping Expo emulator compatibility
+[2026-08-14] | [Phase 2] | Implemented codi canvas sticker add, drag, resize, rotate, delete, layer-forward, reset, save, and restore flows | Let users compose saved outfits from locally stored wardrobe items without network access

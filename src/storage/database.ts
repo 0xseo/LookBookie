@@ -9,6 +9,7 @@ import type {
   NewClothingItem,
   Season,
 } from '../types/clothing';
+import type { NewOutfit, Outfit, OutfitSticker } from '../types/outfit';
 
 const DATABASE_NAME = 'lookbookie.db';
 
@@ -19,6 +20,13 @@ type ClothingRow = {
   category: ClothingCategory;
   seasons: string | null;
   color: ClothingColor;
+  created_at: string;
+};
+
+type OutfitRow = {
+  id: number;
+  name: string;
+  stickers: string;
   created_at: string;
 };
 
@@ -44,6 +52,13 @@ export async function initDatabase() {
       category TEXT NOT NULL,
       seasons TEXT NOT NULL,
       color TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS outfits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      stickers TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -84,6 +99,32 @@ export async function listClothingItems(filter: CategoryFilter) {
   return rows.map(mapClothingRow);
 }
 
+export async function insertOutfit(outfit: NewOutfit) {
+  const db = await getDatabase();
+
+  await db.runAsync(
+    'INSERT INTO outfits (name, stickers) VALUES (?, ?)',
+    outfit.name,
+    JSON.stringify(outfit.stickers),
+  );
+}
+
+export async function listOutfits() {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<OutfitRow>(
+    'SELECT * FROM outfits ORDER BY datetime(created_at) DESC, id DESC',
+  );
+
+  return rows.map(mapOutfitRow);
+}
+
+export async function countOutfits() {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM outfits');
+
+  return row?.count ?? 0;
+}
+
 function mapClothingRow(row: ClothingRow): ClothingItem {
   return {
     id: row.id,
@@ -105,6 +146,25 @@ function parseSeasons(value: string | null): Season[] {
     const parsed = JSON.parse(value);
 
     return Array.isArray(parsed) ? (parsed as Season[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function mapOutfitRow(row: OutfitRow): Outfit {
+  return {
+    id: row.id,
+    name: row.name,
+    stickers: parseStickers(row.stickers),
+    createdAt: row.created_at,
+  };
+}
+
+function parseStickers(value: string): OutfitSticker[] {
+  try {
+    const parsed = JSON.parse(value);
+
+    return Array.isArray(parsed) ? (parsed as OutfitSticker[]) : [];
   } catch {
     return [];
   }

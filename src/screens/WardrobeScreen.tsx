@@ -20,6 +20,7 @@ type WardrobeScreenProps = {
   items: ClothingItem[];
   selectedCategory: CategoryFilter;
   isLoading: boolean;
+  bottomInset: number;
   onSelectCategory: (category: CategoryFilter) => void;
   onAddPress: () => void;
 };
@@ -32,6 +33,7 @@ export function WardrobeScreen({
   items,
   selectedCategory,
   isLoading,
+  bottomInset,
   onSelectCategory,
   onAddPress,
 }: WardrobeScreenProps) {
@@ -97,6 +99,7 @@ export function WardrobeScreen({
             columnWrapperStyle={styles.gridRow}
             contentContainerStyle={[
               styles.gridContent,
+              { paddingBottom: bottomInset + 24 },
               items.length === 0 && styles.emptyGridContent,
             ]}
             renderItem={({ item }) => (
@@ -123,7 +126,7 @@ export function WardrobeScreen({
           />
         )}
 
-        <Pressable onPress={onAddPress} style={styles.fab} hitSlop={8}>
+        <Pressable onPress={onAddPress} style={[styles.fab, { bottom: bottomInset }]} hitSlop={8}>
           <Text style={styles.fabText}>+ 옷 추가</Text>
         </Pressable>
       </View>
@@ -226,7 +229,6 @@ const styles = StyleSheet.create({
   gridContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 104,
   },
   emptyGridContent: {
     flexGrow: 1,
@@ -293,7 +295,6 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 16,
-    bottom: 24,
     minHeight: 52,
     paddingHorizontal: 20,
     borderRadius: 28,

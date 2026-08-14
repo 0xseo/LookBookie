@@ -14,9 +14,10 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import Slider from '@react-native-community/slider';
 
 import { COLORS } from '../../constants/colors';
-import { saveWardrobeImage } from '../storage/imageStorage';
+import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage';
 import { insertClothingItem } from '../storage/database';
 import {
   CLOTHING_CATEGORIES,
@@ -34,10 +35,14 @@ type AddItemScreenProps = {
 
 export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [originalImageUri, setOriginalImageUri] = useState<string | null>(null);
+  const [imageHistory, setImageHistory] = useState<string[]>([]);
   const [brand, setBrand] = useState('');
   const [category, setCategory] = useState<ClothingCategory>('상의');
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [color, setColor] = useState<ClothingColor>('블랙');
+  const [brushSize, setBrushSize] = useState(24);
+  const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const pickFromLibrary = async () => {
@@ -56,7 +61,7 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
     });
 
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+      applySelectedImage(result.assets[0].uri);
     }
   };
 
@@ -75,8 +80,15 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
     });
 
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+      applySelectedImage(result.assets[0].uri);
     }
+  };
+
+  const applySelectedImage = (uri: string) => {
+    setImageUri(uri);
+    setOriginalImageUri(uri);
+    setImageHistory([uri]);
+    setProcessingMessage(null);
   };
 
   const toggleSeason = (season: Season) => {
@@ -85,6 +97,56 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
         ? current.filter((currentSeason) => currentSeason !== season)
         : [...current, season],
     );
+  };
+
+  const processPreviewImage = async () => {
+    if (!imageUri) {
+      Alert.alert('사진이 필요해북', '가공할 옷 사진을 먼저 선택해 주세요.');
+      return;
+    }
+
+    setIsSaving(true);
+    setProcessingMessage('이미지를 가볍게 정리하고 있어북...');
+
+    try {
+      const processedImage = await processWardrobeImage(imageUri);
+
+      setImageUri(processedImage.uri);
+      setImageHistory((current) => [...current, processedImage.uri]);
+      setProcessingMessage('로컬 이미지 정리가 완료됐어북');
+    } catch (error) {
+      Alert.alert(
+        '이미지 가공에 실패했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+      setProcessingMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const undoImageEdit = () => {
+    setImageHistory((current) => {
+      if (current.length <= 1) {
+        return current;
+      }
+
+      const nextHistory = current.slice(0, -1);
+      setImageUri(nextHistory[nextHistory.length - 1]);
+      setProcessingMessage(null);
+
+      return nextHistory;
+    });
+  };
+
+  const resetImageEdit = () => {
+    if (!originalImageUri) {
+      return;
+    }
+
+    setImageUri(originalImageUri);
+    setImageHistory([originalImageUri]);
+    setProcessingMessage(null);
   };
 
   const saveItem = async () => {
@@ -96,7 +158,9 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
     setIsSaving(true);
 
     try {
-      const localImagePath = await saveWardrobeImage(imageUri);
+      setProcessingMessage('옷장에 넣기 전에 이미지를 정리하고 있어북...');
+      const processedImage = await processWardrobeImage(imageUri);
+      const localImagePath = await saveWardrobeImage(processedImage.uri);
 
       await insertClothingItem({
         localImagePath,
@@ -114,6 +178,7 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
       );
     } finally {
       setIsSaving(false);
+      setProcessingMessage(null);
     }
   };
 
@@ -157,6 +222,46 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
             <Pressable onPress={takePhoto} style={styles.photoButton} hitSlop={8}>
               <Text style={styles.photoButtonText}>카메라</Text>
             </Pressable>
+          </View>
+
+          <View style={styles.editPanel}>
+            <View style={styles.editPanelHeader}>
+              <Text style={styles.label}>이미지 가공</Text>
+              {processingMessage ? (
+                <Text style={styles.processingText}>{processingMessage}</Text>
+              ) : null}
+            </View>
+            <View style={styles.sliderRow}>
+              <Text style={styles.sliderLabel}>브러시</Text>
+              <Slider
+                value={brushSize}
+                minimumValue={8}
+                maximumValue={64}
+                step={1}
+                onValueChange={setBrushSize}
+                minimumTrackTintColor={COLORS.primary}
+                maximumTrackTintColor={COLORS.border}
+                thumbTintColor={COLORS.accent}
+                style={styles.slider}
+              />
+              <Text style={styles.sliderValue}>{brushSize}</Text>
+            </View>
+            <View style={styles.editActions}>
+              <Pressable
+                onPress={processPreviewImage}
+                disabled={isSaving}
+                style={styles.editButton}
+                hitSlop={8}
+              >
+                <Text style={styles.editButtonText}>정리</Text>
+              </Pressable>
+              <Pressable onPress={undoImageEdit} style={styles.editButton} hitSlop={8}>
+                <Text style={styles.editButtonText}>Undo</Text>
+              </Pressable>
+              <Pressable onPress={resetImageEdit} style={styles.editButton} hitSlop={8}>
+                <Text style={styles.editButtonText}>Reset</Text>
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.formGroup}>
@@ -366,6 +471,61 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.secondary,
   },
   photoButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  editPanel: {
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    gap: 8,
+  },
+  editPanelHeader: {
+    gap: 4,
+  },
+  processingText: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: COLORS.textSecondary,
+  },
+  sliderRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sliderLabel: {
+    width: 48,
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  slider: {
+    flex: 1,
+  },
+  sliderValue: {
+    width: 32,
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    textAlign: 'right',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.secondary,
+  },
+  editButtonText: {
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.primary,
