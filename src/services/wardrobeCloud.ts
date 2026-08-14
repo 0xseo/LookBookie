@@ -81,15 +81,19 @@ export async function syncClothingItemToCloud(item: NewClothingItem): Promise<Cl
   }
 
   const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
 
-  if (userError) {
-    return buildFailedResult(userError.message);
+  if (sessionError) {
+    return {
+      ...NOT_CONFIGURED_RESULT,
+      cloudSyncStatus: 'pending',
+      cloudError: sessionError.message,
+    };
   }
 
-  if (!user) {
+  if (!session?.user) {
     return {
       ...NOT_CONFIGURED_RESULT,
       cloudSyncStatus: 'pending',
@@ -98,6 +102,7 @@ export async function syncClothingItemToCloud(item: NewClothingItem): Promise<Cl
   }
 
   try {
+    const user = session.user;
     const uploadResult = await uploadClothingImage(user.id, item.localImagePath);
     const { data, error } = await supabase
       .from('clothes')

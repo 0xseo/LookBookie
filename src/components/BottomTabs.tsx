@@ -6,6 +6,7 @@ export type AppTab = 'wardrobe' | 'codiBook' | 'profile';
 
 type BottomTabsProps = {
   activeTab: AppTab;
+  bottomOffset: number;
   onSelectTab: (tab: AppTab) => void;
 };
 
@@ -15,9 +16,9 @@ const TABS: Array<{ key: AppTab; label: string; icon: string }> = [
   { key: 'profile', label: '마이', icon: '○' },
 ];
 
-export function BottomTabs({ activeTab, onSelectTab }: BottomTabsProps) {
+export function BottomTabs({ activeTab, bottomOffset, onSelectTab }: BottomTabsProps) {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { bottom: bottomOffset }]}>
       {TABS.map((tab) => {
         const isActive = activeTab === tab.key;
 
@@ -42,7 +43,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 16,
     minHeight: 64,
     padding: 8,
     borderRadius: 16,

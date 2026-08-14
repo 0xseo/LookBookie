@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, StatusBar, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomTabs, type AppTab } from './src/components/BottomTabs';
 import { COLORS } from './constants/colors';
@@ -35,9 +36,16 @@ import {
 import type { CategoryFilter, ClothingItem } from './src/types/clothing';
 import type { FriendProfile, FriendWardrobeItem } from './src/types/friends';
 
-const TAB_BAR_INSET = 96;
-
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent() {
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<ClothingItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('전체');
   const [activeTab, setActiveTab] = useState<AppTab>('wardrobe');
@@ -52,6 +60,8 @@ export default function App() {
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
   const [friendWardrobeItems, setFriendWardrobeItems] = useState<FriendWardrobeItem[]>([]);
+  const tabBottomOffset = Math.max(8, insets.bottom);
+  const tabBarInset = 80 + tabBottomOffset;
 
   const visibleItems =
     selectedCategory === '전체'
@@ -372,7 +382,7 @@ export default function App() {
           items={visibleItems}
           selectedCategory={selectedCategory}
           isLoading={isLoading}
-          bottomInset={TAB_BAR_INSET}
+          bottomInset={tabBarInset}
           onSelectCategory={handleSelectCategory}
           onAddPress={() => setIsAddVisible(true)}
         />
@@ -382,7 +392,7 @@ export default function App() {
         <CodiBookScreen
           items={items}
           isLoading={isLoading}
-          bottomInset={TAB_BAR_INSET}
+          bottomInset={tabBarInset}
           onOutfitSaved={handleOutfitSaved}
           onOpenWardrobe={() => setActiveTab('wardrobe')}
         />
@@ -401,7 +411,7 @@ export default function App() {
           friends={friends}
           selectedFriend={selectedFriend}
           friendWardrobeItems={friendWardrobeItems}
-          bottomInset={TAB_BAR_INSET}
+          bottomInset={tabBarInset}
           onSignIn={handleCloudSignIn}
           onSignUp={handleCloudSignUp}
           onSignOut={handleCloudSignOut}
@@ -413,7 +423,11 @@ export default function App() {
         />
       ) : null}
 
-      <BottomTabs activeTab={activeTab} onSelectTab={setActiveTab} />
+      <BottomTabs
+        activeTab={activeTab}
+        bottomOffset={tabBottomOffset}
+        onSelectTab={setActiveTab}
+      />
 
       <Modal visible={isAddVisible} animationType="slide" presentationStyle="pageSheet">
         <AddItemScreen onCancel={() => setIsAddVisible(false)} onSaved={handleSaved} />

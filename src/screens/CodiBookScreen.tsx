@@ -6,12 +6,13 @@ import {
   Image,
   PanResponder,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
 import { insertOutfit, listOutfits } from '../storage/database';
@@ -31,8 +32,13 @@ type CanvasSize = {
   height: number;
 };
 
+type CodiMode = 'library' | 'canvas';
+
+const GRID_COLUMNS = 3;
+const GRID_GAP = 8;
+const SIDE_PADDING = 16;
 const MIN_STICKER_SIZE = 72;
-const DEFAULT_STICKER_SIZE = 136;
+const DEFAULT_STICKER_SIZE = 140;
 
 export function CodiBookScreen({
   items,
@@ -41,11 +47,19 @@ export function CodiBookScreen({
   onOutfitSaved,
   onOpenWardrobe,
 }: CodiBookScreenProps) {
+  const { width } = useWindowDimensions();
+  const [mode, setMode] = useState<CodiMode>('library');
   const [stickers, setStickers] = useState<OutfitSticker[]>([]);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [canvasSize, setCanvasSize] = useState<CanvasSize>({ width: 0, height: 0 });
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+
+  const tileSize = useMemo(() => {
+    const availableWidth = width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1);
+
+    return Math.floor(availableWidth / GRID_COLUMNS);
+  }, [width]);
 
   const selectedSticker = useMemo(
     () => stickers.find((sticker) => sticker.id === selectedStickerId),
@@ -54,8 +68,7 @@ export function CodiBookScreen({
 
   const loadSavedOutfits = useCallback(async () => {
     try {
-      const savedOutfits = await listOutfits();
-      setOutfits(savedOutfits);
+      setOutfits(await listOutfits());
     } catch (error) {
       Alert.alert(
         '코디북을 불러오지 못했어북',
@@ -68,17 +81,28 @@ export function CodiBookScreen({
     loadSavedOutfits();
   }, [loadSavedOutfits]);
 
-  const addSticker = (item: ClothingItem) => {
-    const size = Math.min(DEFAULT_STICKER_SIZE, Math.max(MIN_STICKER_SIZE, canvasSize.width * 0.36));
+  const toggleStickerFromItem = (item: ClothingItem) => {
+    const existingSticker = stickers.find((sticker) => sticker.clothingItemId === item.id);
+
+    if (existingSticker) {
+      deleteSticker(existingSticker.id);
+      return;
+    }
+
+    const size = Math.min(
+      DEFAULT_STICKER_SIZE,
+      Math.max(MIN_STICKER_SIZE, (canvasSize.width || width) * 0.36),
+    );
+    const nextIndex = stickers.length + 1;
     const sticker: OutfitSticker = {
       id: `sticker-${item.id}-${Date.now()}`,
       clothingItemId: item.id,
       localImagePath: item.localImagePath,
-      x: Math.max(16, canvasSize.width / 2 - size / 2),
-      y: Math.max(16, canvasSize.height / 2 - size / 2),
+      x: 24 + (nextIndex % 3) * 28,
+      y: 32 + (nextIndex % 4) * 24,
       size,
       rotation: 0,
-      zIndex: stickers.length + 1,
+      zIndex: nextIndex,
     };
 
     setStickers((current) => [...current, sticker]);
@@ -108,11 +132,12 @@ export function CodiBookScreen({
   const resetCanvas = () => {
     setStickers([]);
     setSelectedStickerId(null);
+    setMode('library');
   };
 
   const saveOutfit = async () => {
     if (stickers.length === 0) {
-      Alert.alert('저장할 코디가 없어북', '캔버스에 옷을 먼저 올려 주세요.');
+      Alert.alert('저장할 코디가 없어북', '옷 고르기에서 옷을 먼저 선택해 주세요.');
       return;
     }
 
@@ -145,6 +170,7 @@ export function CodiBookScreen({
 
     setStickers(restoredStickers);
     setSelectedStickerId(restoredStickers[restoredStickers.length - 1]?.id ?? null);
+    setMode('canvas');
   };
 
   return (
@@ -153,7 +179,7 @@ export function CodiBookScreen({
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>코디북</Text>
-            <Text style={styles.caption}>스티커처럼 겹쳐 보는 오늘의 룩</Text>
+            <Text style={styles.caption}>옷을 고르고, 따로 배치해요</Text>
           </View>
           <View style={styles.headerActions}>
             <Pressable onPress={resetCanvas} style={styles.secondaryButton} hitSlop={8}>
@@ -174,123 +200,168 @@ export function CodiBookScreen({
           </View>
         </View>
 
-        <View style={styles.savedBand}>
-          <Text style={styles.sectionTitle}>저장한 코디</Text>
-          {outfits.length === 0 ? (
-            <Text style={styles.emptyCaption}>아직 저장된 코디가 없어북</Text>
-          ) : (
-            <FlatList
-              data={outfits}
-              keyExtractor={(outfit) => String(outfit.id)}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.savedList}
-              renderItem={({ item }) => (
-                <Pressable onPress={() => loadOutfitOnCanvas(item)} style={styles.outfitCard}>
-                  <View style={styles.outfitPreview}>
-                    {item.stickers.slice(0, 3).map((sticker, index) => (
-                      <Image
-                        key={`${item.id}-${sticker.clothingItemId}-${index}`}
-                        source={{ uri: sticker.localImagePath }}
-                        style={[
-                          styles.outfitPreviewImage,
-                          {
-                            left: 8 + index * 18,
-                            top: 10 + index * 6,
-                            transform: [{ rotate: `${sticker.rotation * 0.25}deg` }],
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                  <Text style={styles.outfitName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                </Pressable>
-              )}
-            />
-          )}
+        <View style={styles.segmentedControl}>
+          <ModeButton label="옷 고르기" selected={mode === 'library'} onPress={() => setMode('library')} />
+          <ModeButton label={`배치하기 ${stickers.length}`} selected={mode === 'canvas'} onPress={() => setMode('canvas')} />
         </View>
 
-        <View style={styles.workArea}>
-          <Pressable
-            onPress={() => setSelectedStickerId(null)}
-            style={styles.canvas}
-            onLayout={(event) => {
-              setCanvasSize({
-                width: event.nativeEvent.layout.width,
-                height: event.nativeEvent.layout.height,
-              });
-            }}
-          >
-            {stickers.length === 0 ? (
-              <View style={styles.canvasEmptyState}>
-                <Text style={styles.canvasMascot}>🐢</Text>
-                <View style={styles.speechBubble}>
-                  <Text style={styles.canvasEmptyText}>아래 옷을 눌러 코디를 만들어봐북</Text>
-                </View>
-              </View>
-            ) : null}
-
-            {stickers.map((sticker) => (
-              <CanvasSticker
-                key={sticker.id}
-                sticker={sticker}
-                canvasSize={canvasSize}
-                selected={selectedStickerId === sticker.id}
-                onSelect={() => setSelectedStickerId(sticker.id)}
-                onChange={(updates) => updateSticker(sticker.id, updates)}
-                onDelete={() => deleteSticker(sticker.id)}
-              />
-            ))}
-          </Pressable>
-
-          <View style={styles.drawer}>
-            <View style={styles.drawerHeader}>
-              <Text style={styles.sectionTitle}>내 옷장</Text>
-              {selectedSticker ? (
-                <Pressable onPress={bringSelectedForward} style={styles.layerButton} hitSlop={8}>
-                  <Text style={styles.layerButtonText}>앞으로</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
+        {mode === 'library' ? (
+          <View style={styles.screenBody}>
+            <SavedOutfits outfits={outfits} onSelect={loadOutfitOnCanvas} />
             {isLoading ? (
-              <View style={styles.drawerCenter}>
+              <View style={styles.centerContent}>
                 <ActivityIndicator color={COLORS.primary} />
               </View>
             ) : items.length === 0 ? (
-              <View style={styles.drawerEmpty}>
-                <Text style={styles.emptyCaption}>코디할 옷이 아직 없어북</Text>
-                <Pressable onPress={onOpenWardrobe} style={styles.secondaryButton} hitSlop={8}>
-                  <Text style={styles.secondaryButtonText}>옷장으로</Text>
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyMascot}>🐢</Text>
+                <View style={styles.speechBubble}>
+                  <Text style={styles.emptyText}>코디할 옷이 아직 없어북</Text>
+                </View>
+                <Pressable onPress={onOpenWardrobe} style={styles.primaryButton} hitSlop={8}>
+                  <Text style={styles.primaryButtonText}>옷장으로</Text>
                 </Pressable>
               </View>
             ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.drawerList}
-              >
-                {items.map((item) => (
-                  <Pressable
-                    key={item.id}
-                    onPress={() => addSticker(item)}
-                    style={styles.drawerItem}
-                    hitSlop={8}
-                  >
-                    <Image source={{ uri: item.localImagePath }} style={styles.drawerImage} />
-                    <Text style={styles.drawerItemText} numberOfLines={1}>
-                      {item.category}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              <FlatList
+                data={items}
+                keyExtractor={(item) => String(item.id)}
+                numColumns={GRID_COLUMNS}
+                columnWrapperStyle={styles.gridRow}
+                contentContainerStyle={styles.gridContent}
+                renderItem={({ item }) => {
+                  const selected = stickers.some((sticker) => sticker.clothingItemId === item.id);
+
+                  return (
+                    <Pressable
+                      onPress={() => toggleStickerFromItem(item)}
+                      style={[
+                        styles.libraryTile,
+                        {
+                          width: tileSize,
+                          height: tileSize,
+                        },
+                        selected && styles.libraryTileSelected,
+                      ]}
+                      hitSlop={8}
+                    >
+                      <Image source={{ uri: item.localImagePath }} style={styles.libraryImage} />
+                      <View style={[styles.pickBadge, selected && styles.pickBadgeSelected]}>
+                        <Text style={styles.pickBadgeText}>{selected ? '선택' : '+'}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                }}
+              />
             )}
           </View>
-        </View>
+        ) : (
+          <View style={styles.screenBody}>
+            <View style={styles.canvasActions}>
+              <Pressable onPress={() => setMode('library')} style={styles.secondaryButton} hitSlop={8}>
+                <Text style={styles.secondaryButtonText}>옷 추가</Text>
+              </Pressable>
+              <Pressable
+                onPress={bringSelectedForward}
+                disabled={!selectedSticker}
+                style={[styles.secondaryButton, !selectedSticker && styles.mutedButton]}
+                hitSlop={8}
+              >
+                <Text style={styles.secondaryButtonText}>앞으로</Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={() => setSelectedStickerId(null)}
+              style={styles.canvas}
+              onLayout={(event) => {
+                setCanvasSize({
+                  width: event.nativeEvent.layout.width,
+                  height: event.nativeEvent.layout.height,
+                });
+              }}
+            >
+              {stickers.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyMascot}>🐢</Text>
+                  <View style={styles.speechBubble}>
+                    <Text style={styles.emptyText}>옷 고르기에서 코디할 옷을 가져와봐북</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {stickers.map((sticker) => (
+                <CanvasSticker
+                  key={sticker.id}
+                  sticker={sticker}
+                  canvasSize={canvasSize}
+                  selected={selectedStickerId === sticker.id}
+                  onSelect={() => setSelectedStickerId(sticker.id)}
+                  onChange={(updates) => updateSticker(sticker.id, updates)}
+                  onDelete={() => deleteSticker(sticker.id)}
+                />
+              ))}
+            </Pressable>
+          </View>
+        )}
       </View>
     </SafeAreaView>
+  );
+}
+
+type ModeButtonProps = {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+};
+
+function ModeButton({ label, selected, onPress }: ModeButtonProps) {
+  return (
+    <Pressable onPress={onPress} style={[styles.modeButton, selected && styles.modeButtonSelected]} hitSlop={8}>
+      <Text style={[styles.modeButtonText, selected && styles.modeButtonTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+type SavedOutfitsProps = {
+  outfits: Outfit[];
+  onSelect: (outfit: Outfit) => void;
+};
+
+function SavedOutfits({ outfits, onSelect }: SavedOutfitsProps) {
+  return (
+    <View style={styles.savedBand}>
+      <Text style={styles.sectionTitle}>저장한 코디</Text>
+      {outfits.length === 0 ? (
+        <Text style={styles.emptyCaption}>아직 저장된 코디가 없어북</Text>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.savedList}>
+          {outfits.map((outfit) => (
+            <Pressable key={outfit.id} onPress={() => onSelect(outfit)} style={styles.outfitCard} hitSlop={8}>
+              <View style={styles.outfitPreview}>
+                {outfit.stickers.slice(0, 3).map((sticker, index) => (
+                  <Image
+                    key={`${outfit.id}-${sticker.clothingItemId}-${index}`}
+                    source={{ uri: sticker.localImagePath }}
+                    style={[
+                      styles.outfitPreviewImage,
+                      {
+                        left: 8 + index * 18,
+                        top: 10 + index * 6,
+                        transform: [{ rotate: `${sticker.rotation * 0.25}deg` }],
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+              <Text style={styles.outfitName} numberOfLines={1}>
+                {outfit.name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -319,16 +390,16 @@ function CanvasSticker({
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dx) > 2 || Math.abs(gesture.dy) > 2,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
           onSelect();
           dragStart.current = { x: sticker.x, y: sticker.y };
         },
         onPanResponderMove: (_, gesture) => {
           onChange({
-            x: clamp(dragStart.current.x + gesture.dx, 0, canvasSize.width - sticker.size),
-            y: clamp(dragStart.current.y + gesture.dy, 0, canvasSize.height - sticker.size),
+            x: clamp(dragStart.current.x + gesture.dx, 0, Math.max(0, canvasSize.width - sticker.size)),
+            y: clamp(dragStart.current.y + gesture.dy, 0, Math.max(0, canvasSize.height - sticker.size)),
           });
         },
       }),
@@ -340,6 +411,7 @@ function CanvasSticker({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
           onSelect();
           resizeStart.current = sticker.size;
@@ -348,7 +420,7 @@ function CanvasSticker({
           const nextSize = clamp(
             resizeStart.current + Math.max(gesture.dx, gesture.dy),
             MIN_STICKER_SIZE,
-            Math.max(MIN_STICKER_SIZE, Math.min(canvasSize.width, canvasSize.height)),
+            Math.max(MIN_STICKER_SIZE, Math.min(canvasSize.width || 240, canvasSize.height || 240)),
           );
 
           onChange({
@@ -366,6 +438,7 @@ function CanvasSticker({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
           onSelect();
           rotateStart.current = sticker.rotation;
@@ -394,13 +467,12 @@ function CanvasSticker({
         },
       ]}
     >
-      <Pressable
-        onPress={onSelect}
+      <View
         style={[styles.stickerTouch, selected && styles.stickerTouchSelected]}
         {...dragResponder.panHandlers}
       >
         <Image source={{ uri: sticker.localImagePath }} style={styles.stickerImage} />
-      </Pressable>
+      </View>
 
       {selected ? (
         <>
@@ -457,8 +529,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  segmentedControl: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    minHeight: 48,
+    padding: 4,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  modeButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeButtonSelected: {
+    backgroundColor: COLORS.secondary,
+  },
+  modeButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  modeButtonTextSelected: {
+    color: COLORS.primary,
+  },
+  screenBody: {
+    flex: 1,
+  },
   primaryButton: {
-    minWidth: 64,
     minHeight: 44,
     paddingHorizontal: 16,
     borderRadius: 12,
@@ -489,8 +593,11 @@ const styles = StyleSheet.create({
   disabledButton: {
     backgroundColor: COLORS.primaryLight,
   },
+  mutedButton: {
+    opacity: 0.45,
+  },
   savedBand: {
-    minHeight: 112,
+    minHeight: 104,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderTopWidth: 1,
@@ -539,32 +646,82 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
-  workArea: {
+  centerContent: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+  },
+  gridRow: {
+    gap: 8,
+    marginBottom: 8,
+  },
+  libraryTile: {
+    overflow: 'hidden',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  libraryTileSelected: {
+    borderColor: COLORS.accent,
+    borderWidth: 2,
+  },
+  libraryImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  pickBadge: {
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    minWidth: 44,
+    minHeight: 32,
+    paddingHorizontal: 8,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  pickBadgeSelected: {
+    backgroundColor: COLORS.accent,
+  },
+  pickBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.surface,
+  },
+  canvasActions: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   canvas: {
-    flex: 65,
-    margin: 16,
-    marginBottom: 8,
+    flex: 1,
+    marginHorizontal: 16,
+    marginBottom: 16,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.canvasBg,
     overflow: 'hidden',
   },
-  canvasEmptyState: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
+  emptyState: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    gap: 16,
   },
-  canvasMascot: {
+  emptyMascot: {
     fontSize: 48,
-    marginBottom: 16,
   },
   speechBubble: {
     padding: 16,
@@ -576,75 +733,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  canvasEmptyText: {
+  emptyText: {
     fontSize: 14,
     fontWeight: '400',
     color: COLORS.textPrimary,
-    textAlign: 'center',
-  },
-  drawer: {
-    flex: 35,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
-  drawerHeader: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  layerButton: {
-    minHeight: 44,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.secondary,
-  },
-  layerButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  drawerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  drawerEmpty: {
-    flex: 1,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  drawerList: {
-    paddingVertical: 8,
-    gap: 8,
-  },
-  drawerItem: {
-    width: 88,
-    minHeight: 112,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
-    overflow: 'hidden',
-  },
-  drawerImage: {
-    width: 88,
-    height: 88,
-    resizeMode: 'cover',
-    backgroundColor: COLORS.surface,
-  },
-  drawerItemText: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
     textAlign: 'center',
   },
   sticker: {

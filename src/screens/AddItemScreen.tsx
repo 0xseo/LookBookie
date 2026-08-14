@@ -4,9 +4,9 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,10 +14,16 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import Slider from '@react-native-community/slider';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
-import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage';
+import { ImageEraserScreen } from './ImageEraserScreen';
+import {
+  cropWardrobeImage,
+  processWardrobeImage,
+  saveWardrobeImage,
+  type CropMode,
+} from '../storage/imageStorage';
 import { insertClothingItem } from '../storage/database';
 import { syncClothingItemToCloud } from '../services/wardrobeCloud';
 import {
@@ -42,9 +48,9 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
   const [category, setCategory] = useState<ClothingCategory>('상의');
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [color, setColor] = useState<ClothingColor>('블랙');
-  const [brushSize, setBrushSize] = useState(24);
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isEraserVisible, setIsEraserVisible] = useState(false);
 
   const pickFromLibrary = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -56,9 +62,8 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.9,
+      allowsEditing: false,
+      quality: 1,
     });
 
     if (!result.canceled) {
@@ -75,9 +80,8 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.9,
+      allowsEditing: false,
+      quality: 1,
     });
 
     if (!result.canceled) {
@@ -126,6 +130,32 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
     }
   };
 
+  const cropPreviewImage = async (mode: CropMode) => {
+    if (!imageUri) {
+      Alert.alert('사진이 필요해북', '자르기할 옷 사진을 먼저 선택해 주세요.');
+      return;
+    }
+
+    setIsSaving(true);
+    setProcessingMessage('선택한 비율로 이미지를 자르고 있어북...');
+
+    try {
+      const processedImage = await cropWardrobeImage(imageUri, mode);
+
+      setImageUri(processedImage.uri);
+      setImageHistory((current) => [...current, processedImage.uri]);
+      setProcessingMessage('자르기가 적용됐어북');
+    } catch (error) {
+      Alert.alert(
+        '이미지 자르기에 실패했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+      setProcessingMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const undoImageEdit = () => {
     setImageHistory((current) => {
       if (current.length <= 1) {
@@ -148,6 +178,13 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
     setImageUri(originalImageUri);
     setImageHistory([originalImageUri]);
     setProcessingMessage(null);
+  };
+
+  const applyEraserImage = (editedImageUri: string) => {
+    setImageUri(editedImageUri);
+    setImageHistory((current) => [...current, editedImageUri]);
+    setProcessingMessage('배경 지우기가 적용됐어북');
+    setIsEraserVisible(false);
   };
 
   const saveItem = async () => {
@@ -236,29 +273,43 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
                 <Text style={styles.processingText}>{processingMessage}</Text>
               ) : null}
             </View>
-            <View style={styles.sliderRow}>
-              <Text style={styles.sliderLabel}>브러시</Text>
-              <Slider
-                value={brushSize}
-                minimumValue={8}
-                maximumValue={64}
-                step={1}
-                onValueChange={setBrushSize}
-                minimumTrackTintColor={COLORS.primary}
-                maximumTrackTintColor={COLORS.border}
-                thumbTintColor={COLORS.accent}
-                style={styles.slider}
-              />
-              <Text style={styles.sliderValue}>{brushSize}</Text>
+            <View style={styles.cropActions}>
+              <Pressable onPress={() => cropPreviewImage('original')} style={styles.editButton} hitSlop={8}>
+                <Text style={styles.editButtonText}>원본</Text>
+              </Pressable>
+              <Pressable onPress={() => cropPreviewImage('square')} style={styles.editButton} hitSlop={8}>
+                <Text style={styles.editButtonText}>1:1</Text>
+              </Pressable>
+              <Pressable onPress={() => cropPreviewImage('portrait45')} style={styles.editButton} hitSlop={8}>
+                <Text style={styles.editButtonText}>4:5</Text>
+              </Pressable>
+              <Pressable onPress={() => cropPreviewImage('portrait34')} style={styles.editButton} hitSlop={8}>
+                <Text style={styles.editButtonText}>3:4</Text>
+              </Pressable>
             </View>
             <View style={styles.editActions}>
+              <Pressable
+                onPress={() => {
+                  if (!imageUri) {
+                    Alert.alert('사진이 필요해북', '배경을 지울 옷 사진을 먼저 선택해 주세요.');
+                    return;
+                  }
+
+                  setIsEraserVisible(true);
+                }}
+                disabled={isSaving}
+                style={styles.editButton}
+                hitSlop={8}
+              >
+                <Text style={styles.editButtonText}>배경 지우기</Text>
+              </Pressable>
               <Pressable
                 onPress={processPreviewImage}
                 disabled={isSaving}
                 style={styles.editButton}
                 hitSlop={8}
               >
-                <Text style={styles.editButtonText}>정리</Text>
+                <Text style={styles.editButtonText}>압축</Text>
               </Pressable>
               <Pressable onPress={undoImageEdit} style={styles.editButton} hitSlop={8}>
                 <Text style={styles.editButtonText}>Undo</Text>
@@ -310,7 +361,7 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
           </View>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>색상</Text>
+            <Text style={styles.label}>대표색</Text>
             <View style={styles.chipWrap}>
               {COLOR_OPTIONS.map((option) => (
                 <Pressable
@@ -359,6 +410,16 @@ export function AddItemScreen({ onCancel, onSaved }: AddItemScreenProps) {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={isEraserVisible} animationType="slide" presentationStyle="fullScreen">
+        {imageUri ? (
+          <ImageEraserScreen
+            imageUri={imageUri}
+            onCancel={() => setIsEraserVisible(false)}
+            onDone={applyEraserImage}
+          />
+        ) : null}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -444,7 +505,7 @@ const styles = StyleSheet.create({
   previewImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
+    resizeMode: 'contain',
   },
   previewPlaceholder: {
     flex: 1,
@@ -496,35 +557,21 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: COLORS.textSecondary,
   },
-  sliderRow: {
-    minHeight: 44,
+  cropActions: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
-  },
-  sliderLabel: {
-    width: 48,
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  slider: {
-    flex: 1,
-  },
-  sliderValue: {
-    width: 32,
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    textAlign: 'right',
   },
   editActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   editButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '45%',
     minHeight: 44,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',

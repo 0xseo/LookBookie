@@ -12,3 +12,7 @@
 [2026-08-14] | [Phase 4] | Added Supabase profiles/friendships schema and friend wardrobe read policy | Enable online lookup of another account wardrobe after adding them as a friend
 [2026-08-14] | [Phase 4] | Added JSON backup export/import services and MyPage controls using Expo DocumentPicker and Sharing | Let users back up and restore local wardrobe/outfit text data without image file embedding
 [2026-08-14] | [Phase 4] | Added friend profile sync, friend add by email, friend list, and online friend wardrobe preview | Complete the first online sharing path while keeping the user's own wardrobe local-first
+[2026-08-14] | [UX Fix] | Added SafeAreaProvider/inset-aware tab positioning and replaced core SafeAreaView imports | Fix safe area warnings and prevent top/bottom content clipping on emulator devices
+[2026-08-14] | [UX Fix] | Changed image picker to select full images, added in-app crop modes, expanded representative color palette, and fixed unauthenticated sync status to pending | Reduce registration friction and avoid misleading failed cloud tags before login
+[2026-08-14] | [Phase 2] | Added separate WebView canvas eraser editor with visible brush preview and transparent PNG export | Make background erasing a real manual alpha-editing step instead of a placeholder control
+[2026-08-14] | [Phase 2] | Split CodiBook into library selection and canvas arrangement modes | Make outfit composition easier by separating item picking from drag/resize/rotate editing
