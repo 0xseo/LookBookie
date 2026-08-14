@@ -1,9 +1,20 @@
-import type { ClothingCategory, ClothingColor, Season } from './clothing';
+import type { ClothingCategory, ClothingColor, ColorFamily, Season } from './clothing';
+
+export type FriendshipStatus = 'pending' | 'accepted';
+
+export type FriendRequestDirection = 'incoming' | 'outgoing';
 
 export type FriendProfile = {
   id: string;
   email: string;
   displayName: string | null;
+};
+
+export type FriendRequest = FriendProfile & {
+  friendshipId: string;
+  direction: FriendRequestDirection;
+  status: FriendshipStatus;
+  createdAt: string;
 };
 
 export type FriendWardrobeItem = {
@@ -15,6 +26,8 @@ export type FriendWardrobeItem = {
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;
+  colorValue: string | null;
+  colorFamily: ColorFamily | null;
   createdAt: string;
 };
 
@@ -24,6 +37,8 @@ export type FriendOutfitSticker = {
   brand: string | null;
   category: ClothingCategory | null;
   color: ClothingColor | null;
+  colorValue: string | null;
+  colorFamily: ColorFamily | null;
   x: number;
   y: number;
   size: number;
@@ -36,5 +51,7 @@ export type FriendOutfit = {
   ownerId: string;
   name: string;
   stickers: FriendOutfitSticker[];
+  canvasWidth: number | null;
+  canvasHeight: number | null;
   createdAt: string;
 };

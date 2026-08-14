@@ -6,6 +6,8 @@ type SyncOutfitInput = {
   name: string;
   stickers: OutfitSticker[];
   wardrobeItems: ClothingItem[];
+  canvasWidth: number | null;
+  canvasHeight: number | null;
 };
 
 type SyncOutfitResult = {
@@ -18,6 +20,8 @@ export async function syncOutfitToCloud({
   name,
   stickers,
   wardrobeItems,
+  canvasWidth,
+  canvasHeight,
 }: SyncOutfitInput): Promise<SyncOutfitResult> {
   if (!isSupabaseConfigured || !supabase) {
     return { synced: false, reason: 'not-configured', error: null };
@@ -46,6 +50,8 @@ export async function syncOutfitToCloud({
       brand: wardrobeItem?.brand ?? null,
       category: wardrobeItem?.category ?? null,
       color: wardrobeItem?.color ?? null,
+      colorValue: wardrobeItem?.colorValue ?? null,
+      colorFamily: wardrobeItem?.colorFamily ?? null,
       x: sticker.x,
       y: sticker.y,
       size: sticker.size,
@@ -58,6 +64,8 @@ export async function syncOutfitToCloud({
     owner_id: session.user.id,
     name,
     stickers: cloudStickers,
+    canvas_width: canvasWidth,
+    canvas_height: canvasHeight,
   });
 
   if (error) {

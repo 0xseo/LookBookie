@@ -25,16 +25,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
 import { ColorPalettePicker } from '../components/ColorPalettePicker';
+import { RepresentativeColorExtractor } from '../components/RepresentativeColorExtractor';
 import { ImageCropScreen } from './ImageCropScreen';
 import { ImageEraserScreen } from './ImageEraserScreen';
 import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage';
 import { insertClothingItem } from '../storage/database';
 import { syncClothingItemToCloud } from '../services/wardrobeCloud';
+import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
 import {
   CLOTHING_CATEGORIES,
+  COLOR_OPTIONS,
   SEASONS,
   type ClothingCategory,
   type ClothingColor,
+  type ColorFamily,
+  type ColorOption,
   type Season,
 } from '../types/clothing';
 
@@ -57,10 +62,16 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     const [category, setCategory] = useState<ClothingCategory>('상의');
     const [seasons, setSeasons] = useState<Season[]>([]);
     const [color, setColor] = useState<ClothingColor>('블랙');
+    const [colorValue, setColorValue] = useState<string>(COLOR_OPTIONS[0].value);
+    const [colorFamily, setColorFamily] = useState<ColorFamily>(COLOR_OPTIONS[0].family);
+    const [suggestedColorOption, setSuggestedColorOption] = useState<ColorOption | null>(null);
+    const [extractedColorHex, setExtractedColorHex] = useState<string | null>(null);
+    const [colorTouched, setColorTouched] = useState(false);
     const [processingMessage, setProcessingMessage] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isCropVisible, setIsCropVisible] = useState(false);
     const [isEraserVisible, setIsEraserVisible] = useState(false);
+    const { colorOptions, customColorOptions, setCustomColorOptions } = useColorPaletteOptions();
 
     const hasDraft =
       Boolean(imageUri || cropSourceUri || eraserSourceUri || brand.trim()) ||
@@ -68,6 +79,13 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
       seasons.length > 0 ||
       category !== '상의' ||
       color !== '블랙';
+
+    const selectColorOption = (nextColor: ClothingColor, option: ColorOption) => {
+      setColor(nextColor);
+      setColorValue(option.value);
+      setColorFamily(option.family);
+      setColorTouched(true);
+    };
 
     const requestCancel = useCallback(() => {
       if (isSaving) {
@@ -174,7 +192,29 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
       setImageUri(editedImageUri);
       setIsEraserVisible(false);
       setEraserSourceUri(null);
-      setProcessingMessage('이미지 수정이 완료됐어북');
+      setSuggestedColorOption(null);
+      setExtractedColorHex(null);
+      setProcessingMessage('이미지 수정이 완료됐어북. 대표색을 살펴보고 있어북...');
+    };
+
+    const handleColorExtracted = (option: ColorOption, sourceHex: string) => {
+      setSuggestedColorOption(option);
+      setExtractedColorHex(sourceHex);
+      setProcessingMessage(`대표색을 ${option.label}로 추천했어북`);
+
+      if (!colorTouched) {
+        setColor(option.label);
+        setColorValue(option.value);
+        setColorFamily(option.family);
+      }
+    };
+
+    const applySuggestedColor = () => {
+      if (!suggestedColorOption) {
+        return;
+      }
+
+      selectColorOption(suggestedColorOption.label, suggestedColorOption);
     };
 
     const toggleSeason = (season: Season) => {
@@ -204,6 +244,8 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
           category,
           seasons,
           color,
+          colorValue,
+          colorFamily,
         };
 
         await insertClothingItem({
@@ -329,7 +371,15 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>대표색</Text>
-              <ColorPalettePicker selectedColor={color} onSelectColor={setColor} />
+              <ColorPalettePicker
+                selectedColor={color}
+                customColorOptions={customColorOptions}
+                onCustomColorOptionsChange={setCustomColorOptions}
+                onSelectColor={selectColorOption}
+                suggestedColorOption={suggestedColorOption}
+                extractedColorHex={extractedColorHex}
+                onApplySuggestedColor={applySuggestedColor}
+              />
             </View>
 
             <Pressable
@@ -376,6 +426,14 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
             />
           ) : null}
         </Modal>
+
+        <RepresentativeColorExtractor
+          imageUri={imageUri}
+          colorOptions={colorOptions}
+          enabled={Boolean(imageUri)}
+          onExtracted={handleColorExtracted}
+          onError={() => setProcessingMessage(null)}
+        />
       </SafeAreaView>
     );
   },

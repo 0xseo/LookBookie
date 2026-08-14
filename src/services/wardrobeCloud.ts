@@ -115,6 +115,8 @@ export async function syncClothingItemToCloud(item: NewClothingItem): Promise<Cl
         category: item.category,
         seasons: item.seasons,
         color: item.color,
+        color_value: item.colorValue,
+        color_family: item.colorFamily,
       })
       .select('id')
       .single();
@@ -188,6 +190,8 @@ export async function syncClothingItemUpdateToCloud(
         category: item.category,
         seasons: item.seasons,
         color: item.color,
+        color_value: item.colorValue,
+        color_family: item.colorFamily,
       })
       .eq('id', item.remoteRecordId);
 

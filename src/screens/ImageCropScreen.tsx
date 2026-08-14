@@ -38,8 +38,11 @@ const CROP_OPTIONS: Array<{ label: string; mode: CropMode }> = [
 export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenProps) {
   const { width, height } = useWindowDimensions();
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const dragStart = useRef({ x: 0, y: 0 });
+  const lastGestureMove = useRef({ dx: 0, dy: 0 });
   const latestPan = useRef({ x: 0, y: 0 });
+  const latestZoom = useRef(1);
+  const pinchStartDistance = useRef<number | null>(null);
+  const pinchStartZoom = useRef(1);
   const [selectedMode, setSelectedMode] = useState<CropMode>('original');
   const [imageSize, setImageSize] = useState<ImageSize | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -65,10 +68,7 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
     ? Math.max(cropFrame.width / imageSize.width, cropFrame.height / imageSize.height)
     : 1;
   const displaySize = imageSize
-    ? {
-        width: imageSize.width * baseScale * zoom,
-        height: imageSize.height * baseScale * zoom,
-      }
+    ? getDisplaySize(imageSize, baseScale, zoom)
     : { width: cropFrame.width, height: cropFrame.height };
 
   useEffect(() => {
@@ -77,6 +77,8 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
       (imageWidth, imageHeight) => {
         setImageSize({ width: imageWidth, height: imageHeight });
         latestPan.current = { x: 0, y: 0 };
+        latestZoom.current = 1;
+        setZoom(1);
         pan.setValue({ x: 0, y: 0 });
       },
       () => {
@@ -97,39 +99,67 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
         onMoveShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
-          dragStart.current = latestPan.current;
+          lastGestureMove.current = { dx: 0, dy: 0 };
+          pinchStartDistance.current = null;
+          pinchStartZoom.current = latestZoom.current;
         },
-        onPanResponderMove: (_, gesture) => {
+        onPanResponderMove: (event, gesture) => {
+          const touches = event.nativeEvent.touches;
+
+          if (touches.length >= 2 && imageSize) {
+            const nextDistance = getTouchDistance(touches[0], touches[1]);
+
+            if (!pinchStartDistance.current) {
+              pinchStartDistance.current = nextDistance;
+              pinchStartZoom.current = latestZoom.current;
+            }
+
+            const nextZoom = clamp(
+              pinchStartZoom.current * (nextDistance / pinchStartDistance.current),
+              1,
+              3,
+            );
+            const nextDisplaySize = getDisplaySize(imageSize, baseScale, nextZoom);
+            const nextPan = constrainPan(latestPan.current, cropFrame, nextDisplaySize);
+
+            latestZoom.current = nextZoom;
+            latestPan.current = nextPan;
+            lastGestureMove.current = { dx: gesture.dx, dy: gesture.dy };
+            setZoom(nextZoom);
+            pan.setValue(nextPan);
+            return;
+          }
+
+          pinchStartDistance.current = null;
+          const deltaX = gesture.dx - lastGestureMove.current.dx;
+          const deltaY = gesture.dy - lastGestureMove.current.dy;
           const nextPan = constrainPan(
             {
-              x: dragStart.current.x + gesture.dx,
-              y: dragStart.current.y + gesture.dy,
+              x: latestPan.current.x + deltaX,
+              y: latestPan.current.y + deltaY,
             },
             cropFrame,
             displaySize,
           );
 
           latestPan.current = nextPan;
+          lastGestureMove.current = { dx: gesture.dx, dy: gesture.dy };
           pan.setValue(nextPan);
         },
         onPanResponderRelease: (_, gesture) => {
-          const nextPan = constrainPan(
-            {
-              x: dragStart.current.x + gesture.dx,
-              y: dragStart.current.y + gesture.dy,
-            },
-            cropFrame,
-            displaySize,
-          );
+          pinchStartDistance.current = null;
+          lastGestureMove.current = { dx: gesture.dx, dy: gesture.dy };
+          const nextPan = constrainPan(latestPan.current, cropFrame, displaySize);
 
           latestPan.current = nextPan;
           pan.setValue(nextPan);
         },
       }),
-    [cropFrame, displaySize, pan],
+    [baseScale, cropFrame, displaySize, imageSize, pan],
   );
 
   const updateZoom = (nextZoom: number) => {
+    latestZoom.current = nextZoom;
     setZoom(nextZoom);
   };
 
@@ -225,6 +255,8 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
                 onPress={() => {
                   setSelectedMode(option.mode);
                   latestPan.current = { x: 0, y: 0 };
+                  latestZoom.current = 1;
+                  setZoom(1);
                   pan.setValue({ x: 0, y: 0 });
                 }}
                 style={[styles.optionButton, selected && styles.optionButtonSelected]}
@@ -285,6 +317,23 @@ function constrainPan(
     x: clamp(pan.x, -maxX, maxX),
     y: clamp(pan.y, -maxY, maxY),
   };
+}
+
+function getDisplaySize(imageSize: ImageSize, baseScale: number, zoom: number) {
+  return {
+    width: imageSize.width * baseScale * zoom,
+    height: imageSize.height * baseScale * zoom,
+  };
+}
+
+function getTouchDistance(
+  firstTouch: { pageX: number; pageY: number },
+  secondTouch: { pageX: number; pageY: number },
+) {
+  const dx = firstTouch.pageX - secondTouch.pageX;
+  const dy = firstTouch.pageY - secondTouch.pageY;
+
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 function getCropRect({

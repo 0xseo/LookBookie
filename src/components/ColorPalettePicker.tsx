@@ -1,40 +1,55 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { COLORS } from '../../constants/colors';
-import { loadCustomColorOptions, saveCustomColorOptions } from '../storage/colorPalette';
-import { COLOR_OPTIONS, type ClothingColor, type ColorOption } from '../types/clothing';
+import {
+  COLOR_FAMILY_OPTIONS,
+  getColorFamilyLabel,
+  inferColorFamilyFromHex,
+  mergeColorOptions,
+  normalizeHex,
+} from '../services/colorSearch';
+import {
+  COLOR_OPTIONS,
+  type ClothingColor,
+  type ColorFamily,
+  type ColorOption,
+} from '../types/clothing';
 
 type ColorPalettePickerProps = {
   selectedColor: ClothingColor;
-  onSelectColor: (color: ClothingColor) => void;
+  customColorOptions: ColorOption[];
+  onCustomColorOptionsChange: (options: ColorOption[]) => Promise<void>;
+  onSelectColor: (color: ClothingColor, option: ColorOption) => void;
+  suggestedColorOption?: ColorOption | null;
+  extractedColorHex?: string | null;
+  onApplySuggestedColor?: () => void;
 };
 
-export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalettePickerProps) {
-  const [customColorOptions, setCustomColorOptions] = useState<ColorOption[]>([]);
+export function ColorPalettePicker({
+  selectedColor,
+  customColorOptions,
+  onCustomColorOptionsChange,
+  onSelectColor,
+  suggestedColorOption,
+  extractedColorHex,
+  onApplySuggestedColor,
+}: ColorPalettePickerProps) {
   const [customColorLabel, setCustomColorLabel] = useState('');
   const [customColorValue, setCustomColorValue] = useState('#');
+  const [customColorFamily, setCustomColorFamily] = useState<ColorFamily>('black');
   const [editingColorLabel, setEditingColorLabel] = useState<string | null>(null);
-  const colorOptions = useMemo(
-    () => mergeColorOptions([...COLOR_OPTIONS, ...customColorOptions]),
-    [customColorOptions],
-  );
+  const colorOptions = mergeColorOptions([...COLOR_OPTIONS, ...customColorOptions]);
   const normalizedCustomColorValue = customColorValue.toUpperCase();
-  const canSaveCustomColor = /^#[0-9A-F]{6}$/.test(normalizedCustomColorValue);
-
-  useEffect(() => {
-    async function loadPalette() {
-      setCustomColorOptions(await loadCustomColorOptions());
-    }
-
-    loadPalette();
-  }, []);
+  const normalizedHex = normalizeHex(normalizedCustomColorValue);
+  const canSaveCustomColor = Boolean(normalizedHex);
 
   const saveCustomColor = async () => {
     const label = customColorLabel.trim() || normalizedCustomColorValue;
-    const nextOption = {
+    const nextOption: ColorOption = {
       label,
-      value: normalizedCustomColorValue,
+      value: normalizedHex ?? normalizedCustomColorValue,
+      family: customColorFamily,
     };
 
     if (!canSaveCustomColor) {
@@ -62,9 +77,8 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
       : [...customColorOptions, nextOption];
 
     try {
-      await saveCustomColorOptions(nextCustomOptions);
-      setCustomColorOptions(nextCustomOptions);
-      onSelectColor(label);
+      await onCustomColorOptionsChange(nextCustomOptions);
+      onSelectColor(label, nextOption);
       resetForm();
     } catch (error) {
       Alert.alert(
@@ -78,6 +92,7 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
     setEditingColorLabel(option.label);
     setCustomColorLabel(option.label);
     setCustomColorValue(option.value);
+    setCustomColorFamily(option.family);
   };
 
   const deleteCustomColor = (option: ColorOption) => {
@@ -91,11 +106,10 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
             (customOption) => customOption.label !== option.label,
           );
 
-          await saveCustomColorOptions(nextCustomOptions);
-          setCustomColorOptions(nextCustomOptions);
+          await onCustomColorOptionsChange(nextCustomOptions);
 
           if (selectedColor === option.label) {
-            onSelectColor('블랙');
+            onSelectColor(COLOR_OPTIONS[0].label, COLOR_OPTIONS[0]);
           }
 
           if (editingColorLabel === option.label) {
@@ -110,10 +124,47 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
     setEditingColorLabel(null);
     setCustomColorLabel('');
     setCustomColorValue('#');
+    setCustomColorFamily('black');
+  };
+
+  const updateHexInput = (value: string) => {
+    const nextValue = formatHexInput(value);
+    const nextHex = normalizeHex(nextValue);
+
+    setCustomColorValue(nextValue);
+
+    if (!editingColorLabel && nextHex) {
+      setCustomColorFamily(inferColorFamilyFromHex(nextHex, customColorLabel));
+    }
   };
 
   return (
     <View style={styles.container}>
+      {suggestedColorOption ? (
+        <View style={styles.suggestionCard}>
+          <View
+            style={[
+              styles.colorSwatch,
+              {
+                backgroundColor: suggestedColorOption.value,
+                borderColor:
+                  suggestedColorOption.value === '#FFFFFF' ? COLORS.border : suggestedColorOption.value,
+              },
+            ]}
+          />
+          <View style={styles.suggestionTextGroup}>
+            <Text style={styles.suggestionTitle}>자동 추천 {suggestedColorOption.label}</Text>
+            <Text style={styles.suggestionCaption}>
+              {getColorFamilyLabel(suggestedColorOption.family)} 계열
+              {extractedColorHex ? ` · ${extractedColorHex}` : ''}
+            </Text>
+          </View>
+          <Pressable onPress={onApplySuggestedColor} style={styles.suggestionButton} hitSlop={8}>
+            <Text style={styles.suggestionButtonText}>적용</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.chipWrap}>
         {colorOptions.map((option) => {
           const selected = selectedColor === option.label;
@@ -127,7 +178,7 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
               style={[styles.colorChipFrame, selected && styles.choiceChipSelected]}
             >
               <Pressable
-                onPress={() => onSelectColor(option.label)}
+                onPress={() => onSelectColor(option.label, option)}
                 style={styles.colorSelectButton}
                 hitSlop={8}
               >
@@ -140,18 +191,27 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
                     },
                   ]}
                 />
-                <Text
-                  style={[styles.choiceChipText, selected && styles.choiceChipTextSelected]}
-                >
-                  {option.label}
-                </Text>
+                <View>
+                  <Text style={[styles.choiceChipText, selected && styles.choiceChipTextSelected]}>
+                    {option.label}
+                  </Text>
+                  <Text style={styles.familyText}>{getColorFamilyLabel(option.family)}</Text>
+                </View>
               </Pressable>
               {custom ? (
                 <View style={styles.colorTools}>
-                  <Pressable onPress={() => editCustomColor(option)} style={styles.iconButton} hitSlop={8}>
+                  <Pressable
+                    onPress={() => editCustomColor(option)}
+                    style={styles.iconButton}
+                    hitSlop={8}
+                  >
                     <Text style={styles.iconButtonText}>✎</Text>
                   </Pressable>
-                  <Pressable onPress={() => deleteCustomColor(option)} style={styles.iconButton} hitSlop={8}>
+                  <Pressable
+                    onPress={() => deleteCustomColor(option)}
+                    style={styles.iconButton}
+                    hitSlop={8}
+                  >
                     <Text style={styles.iconButtonText}>×</Text>
                   </Pressable>
                 </View>
@@ -185,7 +245,7 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
             />
             <TextInput
               value={customColorValue}
-              onChangeText={(value) => setCustomColorValue(formatHexInput(value))}
+              onChangeText={updateHexInput}
               autoCapitalize="characters"
               autoCorrect={false}
               placeholder="#AABBCC"
@@ -195,6 +255,29 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
             />
           </View>
         </View>
+
+        <View style={styles.familyPicker}>
+          <Text style={styles.smallCaption}>검색 그룹</Text>
+          <View style={styles.familyChipWrap}>
+            {COLOR_FAMILY_OPTIONS.map((option) => {
+              const selected = customColorFamily === option.family;
+
+              return (
+                <Pressable
+                  key={option.family}
+                  onPress={() => setCustomColorFamily(option.family)}
+                  style={[styles.familyChip, selected && styles.familyChipSelected]}
+                  hitSlop={8}
+                >
+                  <Text style={[styles.familyChipText, selected && styles.familyChipTextSelected]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
         <View style={styles.customColorActions}>
           {editingColorLabel ? (
             <Pressable onPress={resetForm} style={styles.secondaryButton} hitSlop={8}>
@@ -217,19 +300,6 @@ export function ColorPalettePicker({ selectedColor, onSelectColor }: ColorPalett
   );
 }
 
-function mergeColorOptions(options: readonly ColorOption[]) {
-  const seenLabels = new Set<string>();
-
-  return options.filter((option) => {
-    if (seenLabels.has(option.label)) {
-      return false;
-    }
-
-    seenLabels.add(option.label);
-    return true;
-  });
-}
-
 function formatHexInput(value: string) {
   const hexDigits = value.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6).toUpperCase();
 
@@ -240,13 +310,51 @@ const styles = StyleSheet.create({
   container: {
     gap: 8,
   },
+  suggestionCard: {
+    minHeight: 56,
+    padding: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.secondary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  suggestionTextGroup: {
+    flex: 1,
+  },
+  suggestionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  suggestionCaption: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '400',
+    color: COLORS.textSecondary,
+  },
+  suggestionButton: {
+    minHeight: 40,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  suggestionButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.surface,
+  },
   chipWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
   colorChipFrame: {
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -256,7 +364,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   colorSelectButton: {
-    minHeight: 44,
+    minHeight: 48,
     paddingLeft: 8,
     paddingRight: 12,
     flexDirection: 'row',
@@ -275,6 +383,12 @@ const styles = StyleSheet.create({
   choiceChipTextSelected: {
     color: COLORS.primary,
   },
+  familyText: {
+    marginTop: 1,
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
   colorSwatch: {
     width: 24,
     height: 24,
@@ -283,14 +397,14 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   colorTools: {
-    minHeight: 44,
+    minHeight: 48,
     flexDirection: 'row',
     borderLeftWidth: 1,
     borderLeftColor: COLORS.border,
   },
   iconButton: {
     width: 36,
-    minHeight: 44,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -311,6 +425,11 @@ const styles = StyleSheet.create({
   smallLabel: {
     fontSize: 12,
     fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  smallCaption: {
+    fontSize: 12,
+    fontWeight: '600',
     color: COLORS.textSecondary,
   },
   customColorInputs: {
@@ -352,6 +471,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.textPrimary,
+  },
+  familyPicker: {
+    gap: 6,
+  },
+  familyChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  familyChip: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  familyChipSelected: {
+    borderColor: COLORS.primaryLight,
+    backgroundColor: COLORS.secondary,
+  },
+  familyChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  familyChipTextSelected: {
+    color: COLORS.primary,
   },
   customColorActions: {
     flexDirection: 'row',

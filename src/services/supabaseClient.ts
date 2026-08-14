@@ -5,7 +5,7 @@ import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
 
 import 'react-native-url-polyfill/auto';
 
-import type { ClothingCategory, ClothingColor, Season } from '../types/clothing';
+import type { ClothingCategory, ClothingColor, ColorFamily, Season } from '../types/clothing';
 
 type LookbookieDatabase = {
   public: {
@@ -21,6 +21,8 @@ type LookbookieDatabase = {
           category: ClothingCategory;
           seasons: Season[];
           color: ClothingColor;
+          color_value: string | null;
+          color_family: ColorFamily | null;
           created_at: string;
         };
         Insert: {
@@ -32,6 +34,8 @@ type LookbookieDatabase = {
           category: ClothingCategory;
           seasons: Season[];
           color: ClothingColor;
+          color_value?: string | null;
+          color_family?: ColorFamily | null;
         };
         Update: {
           remote_image_url?: string;
@@ -41,6 +45,8 @@ type LookbookieDatabase = {
           category?: ClothingCategory;
           seasons?: Season[];
           color?: ClothingColor;
+          color_value?: string | null;
+          color_family?: ColorFamily | null;
         };
         Relationships: [];
       };
@@ -69,13 +75,20 @@ type LookbookieDatabase = {
           id: string;
           owner_id: string;
           friend_id: string;
+          status: 'pending' | 'accepted';
+          accepted_at: string | null;
           created_at: string;
         };
         Insert: {
           owner_id: string;
           friend_id: string;
+          status?: 'pending' | 'accepted';
+          accepted_at?: string | null;
         };
-        Update: never;
+        Update: {
+          status?: 'pending' | 'accepted';
+          accepted_at?: string | null;
+        };
         Relationships: [];
       };
       outfits: {
@@ -84,16 +97,22 @@ type LookbookieDatabase = {
           owner_id: string;
           name: string;
           stickers: unknown;
+          canvas_width: number | null;
+          canvas_height: number | null;
           created_at: string;
         };
         Insert: {
           owner_id: string;
           name: string;
           stickers: unknown;
+          canvas_width?: number | null;
+          canvas_height?: number | null;
         };
         Update: {
           name?: string;
           stickers?: unknown;
+          canvas_width?: number | null;
+          canvas_height?: number | null;
         };
         Relationships: [];
       };

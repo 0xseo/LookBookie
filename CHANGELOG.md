@@ -28,3 +28,7 @@
 [2026-08-14] | [Phase 2] | Added transparent-pixel trimming when exporting erased images | Resize edited clothing images around the remaining non-transparent subject
 [2026-08-14] | [UX Fix] | Added editable/deletable custom color palette UI, wardrobe search, cloud icon badges, clothing delete, and sync retry controls | Improve wardrobe management after initial item registration
 [2026-08-14] | [Phase 2] | Reworked CodiBook to open on saved outfits and use a separate searchable/category-filtered item picker with selected-item tray | Make outfit viewing primary and defer wardrobe importing until adding/editing a codi
+[2026-08-14] | [Phase 2] | Added CodiBook hardware/header back-to-list behavior and saved-layout outfit preview cards | Keep CodiBook browsing aligned with the user's saved sticker arrangement
+[2026-08-14] | [Phase 2] | Added pinch-to-zoom crop gestures and representative color extraction through a hidden WebView canvas sampler | Make image editing more direct and reduce manual color entry
+[2026-08-14] | [UX Fix] | Expanded color palette data to include HEX values and searchable color families with editable custom family selection | Support color-family search such as red matching red-adjacent wardrobe items
+[2026-08-14] | [Phase 4] | Reworked friends into pending requests, incoming accept/decline UX, and accepted-only wardrobe/outfit read policies | Require consent before another account can browse shared wardrobe data

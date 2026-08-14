@@ -30,14 +30,23 @@ import {
 } from './src/services/wardrobeCloud';
 import { exportLocalBackupFile, importLocalBackupFile } from './src/services/backupService';
 import {
-  addFriendByEmail,
+  acceptFriendRequest,
+  declineFriendRequest,
   ensureCurrentProfile,
+  listIncomingFriendRequests,
   listFriends,
   listFriendOutfits,
   listFriendWardrobe,
+  listOutgoingFriendRequests,
+  sendFriendRequestByEmail,
 } from './src/services/friendsCloud';
 import type { CategoryFilter, ClothingItem } from './src/types/clothing';
-import type { FriendOutfit, FriendProfile, FriendWardrobeItem } from './src/types/friends';
+import type {
+  FriendOutfit,
+  FriendProfile,
+  FriendRequest,
+  FriendWardrobeItem,
+} from './src/types/friends';
 
 export default function App() {
   return (
@@ -62,6 +71,8 @@ function AppContent() {
   const [isBackupBusy, setIsBackupBusy] = useState(false);
   const [isFriendBusy, setIsFriendBusy] = useState(false);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
+  const [incomingFriendRequests, setIncomingFriendRequests] = useState<FriendRequest[]>([]);
+  const [outgoingFriendRequests, setOutgoingFriendRequests] = useState<FriendRequest[]>([]);
   const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
   const [friendWardrobeItems, setFriendWardrobeItems] = useState<FriendWardrobeItem[]>([]);
   const [friendOutfits, setFriendOutfits] = useState<FriendOutfit[]>([]);
@@ -117,11 +128,21 @@ function AppContent() {
   const loadFriendList = useCallback(async () => {
     if (!isSupabaseConfigured || !cloudSession) {
       setFriends([]);
+      setIncomingFriendRequests([]);
+      setOutgoingFriendRequests([]);
       return;
     }
 
     try {
-      setFriends(await listFriends());
+      const [acceptedFriends, incomingRequests, outgoingRequests] = await Promise.all([
+        listFriends(),
+        listIncomingFriendRequests(),
+        listOutgoingFriendRequests(),
+      ]);
+
+      setFriends(acceptedFriends);
+      setIncomingFriendRequests(incomingRequests);
+      setOutgoingFriendRequests(outgoingRequests);
     } catch (error) {
       Alert.alert(
         '친구 목록을 불러오지 못했어북',
@@ -171,6 +192,8 @@ function AppContent() {
   useEffect(() => {
     if (!cloudSession) {
       setFriends([]);
+      setIncomingFriendRequests([]);
+      setOutgoingFriendRequests([]);
       setSelectedFriend(null);
       setFriendWardrobeItems([]);
       setFriendOutfits([]);
@@ -314,16 +337,49 @@ function AppContent() {
     }
   };
 
-  const handleAddFriend = async (email: string) => {
+  const handleSendFriendRequest = async (email: string) => {
     setIsFriendBusy(true);
 
     try {
-      const friend = await addFriendByEmail(email);
+      await sendFriendRequestByEmail(email);
       await loadFriendList();
-      await handleSelectFriend(friend);
+      Alert.alert('친구 요청을 보냈어북', '상대가 수락하면 친구 옷장을 볼 수 있어요.');
     } catch (error) {
       Alert.alert(
-        '친구 추가에 실패했어북',
+        '친구 요청에 실패했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+    } finally {
+      setIsFriendBusy(false);
+    }
+  };
+
+  const handleAcceptFriendRequest = async (request: FriendRequest) => {
+    setIsFriendBusy(true);
+
+    try {
+      await acceptFriendRequest(request.friendshipId);
+      await loadFriendList();
+      await handleSelectFriend(request);
+    } catch (error) {
+      Alert.alert(
+        '친구 요청 수락에 실패했어북',
+        error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
+      );
+    } finally {
+      setIsFriendBusy(false);
+    }
+  };
+
+  const handleDeclineFriendRequest = async (request: FriendRequest) => {
+    setIsFriendBusy(true);
+
+    try {
+      await declineFriendRequest(request.friendshipId);
+      await loadFriendList();
+    } catch (error) {
+      Alert.alert(
+        '친구 요청 처리에 실패했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );
     } finally {
@@ -378,6 +434,8 @@ function AppContent() {
           category: item.category,
           seasons: item.seasons,
           color: item.color,
+          colorValue: item.colorValue,
+          colorFamily: item.colorFamily,
         });
 
         if (cloudState.cloudSyncStatus === 'synced') {
@@ -450,11 +508,15 @@ function AppContent() {
           cloudEmail={cloudSession?.user.email ?? null}
           isFriendBusy={isFriendBusy}
           friends={friends}
+          incomingFriendRequests={incomingFriendRequests}
+          outgoingFriendRequests={outgoingFriendRequests}
           selectedFriend={selectedFriend}
           friendWardrobeItems={friendWardrobeItems}
           friendOutfits={friendOutfits}
           bottomInset={tabBarInset}
-          onAddFriend={handleAddFriend}
+          onSendFriendRequest={handleSendFriendRequest}
+          onAcceptFriendRequest={handleAcceptFriendRequest}
+          onDeclineFriendRequest={handleDeclineFriendRequest}
           onSelectFriend={handleSelectFriend}
           onOpenProfile={() => setActiveTab('profile')}
         />

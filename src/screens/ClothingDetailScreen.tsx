@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
 import { ColorPalettePicker } from '../components/ColorPalettePicker';
+import { RepresentativeColorExtractor } from '../components/RepresentativeColorExtractor';
 import { ImageCropScreen } from './ImageCropScreen';
 import { ImageEraserScreen } from './ImageEraserScreen';
 import { deleteClothingItem, updateClothingItem } from '../storage/database';
@@ -26,11 +27,14 @@ import {
   deleteClothingItemFromCloud,
   syncClothingItemUpdateToCloud,
 } from '../services/wardrobeCloud';
+import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
 import {
   CLOTHING_CATEGORIES,
   SEASONS,
   type ClothingCategory,
   type ClothingColor,
+  type ColorFamily,
+  type ColorOption,
   type ClothingItem,
   type Season,
 } from '../types/clothing';
@@ -57,18 +61,33 @@ export function ClothingDetailScreen({
   const [category, setCategory] = useState<ClothingCategory>(item.category);
   const [seasons, setSeasons] = useState<Season[]>(item.seasons);
   const [color, setColor] = useState<ClothingColor>(item.color);
+  const [colorValue, setColorValue] = useState(item.colorValue);
+  const [colorFamily, setColorFamily] = useState<ColorFamily>(item.colorFamily);
+  const [suggestedColorOption, setSuggestedColorOption] = useState<ColorOption | null>(null);
+  const [extractedColorHex, setExtractedColorHex] = useState<string | null>(null);
+  const [colorTouched, setColorTouched] = useState(false);
   const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCropVisible, setIsCropVisible] = useState(false);
   const [isEraserVisible, setIsEraserVisible] = useState(false);
+  const { colorOptions, customColorOptions, setCustomColorOptions } = useColorPaletteOptions();
   const hasDraft =
     imageUri !== item.localImagePath ||
     name !== item.name ||
     brand !== item.brand ||
     category !== item.category ||
     color !== item.color ||
+    colorValue !== item.colorValue ||
+    colorFamily !== item.colorFamily ||
     seasons.join('|') !== item.seasons.join('|');
+
+  const selectColorOption = (nextColor: ClothingColor, option: ColorOption) => {
+    setColor(nextColor);
+    setColorValue(option.value);
+    setColorFamily(option.family);
+    setColorTouched(true);
+  };
 
   const requestClose = useCallback(() => {
     if (isSaving || isDeleting) {
@@ -123,7 +142,29 @@ export function ClothingDetailScreen({
     setImageChanged(true);
     setIsEraserVisible(false);
     setEraserSourceUri(null);
-    setProcessingMessage('이미지 수정이 적용됐어북');
+    setSuggestedColorOption(null);
+    setExtractedColorHex(null);
+    setProcessingMessage('이미지 수정이 적용됐어북. 대표색을 살펴보고 있어북...');
+  };
+
+  const handleColorExtracted = (option: ColorOption, sourceHex: string) => {
+    setSuggestedColorOption(option);
+    setExtractedColorHex(sourceHex);
+    setProcessingMessage(`대표색을 ${option.label}로 추천했어북`);
+
+    if (!colorTouched) {
+      setColor(option.label);
+      setColorValue(option.value);
+      setColorFamily(option.family);
+    }
+  };
+
+  const applySuggestedColor = () => {
+    if (!suggestedColorOption) {
+      return;
+    }
+
+    selectColorOption(suggestedColorOption.label, suggestedColorOption);
   };
 
   const toggleSeason = (season: Season) => {
@@ -152,6 +193,8 @@ export function ClothingDetailScreen({
         category,
         seasons,
         color,
+        colorValue,
+        colorFamily,
         cloudSyncStatus: item.cloudSyncStatus === 'synced' ? 'pending' : item.cloudSyncStatus,
         cloudError: null,
       };
@@ -310,7 +353,15 @@ export function ClothingDetailScreen({
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>대표색</Text>
-            <ColorPalettePicker selectedColor={color} onSelectColor={setColor} />
+            <ColorPalettePicker
+              selectedColor={color}
+              customColorOptions={customColorOptions}
+              onCustomColorOptionsChange={setCustomColorOptions}
+              onSelectColor={selectColorOption}
+              suggestedColorOption={suggestedColorOption}
+              extractedColorHex={extractedColorHex}
+              onApplySuggestedColor={applySuggestedColor}
+            />
           </View>
 
           <Pressable
@@ -349,6 +400,14 @@ export function ClothingDetailScreen({
           />
         ) : null}
       </Modal>
+
+      <RepresentativeColorExtractor
+        imageUri={imageChanged ? imageUri : null}
+        colorOptions={colorOptions}
+        enabled={imageChanged}
+        onExtracted={handleColorExtracted}
+        onError={() => setProcessingMessage(null)}
+      />
     </SafeAreaView>
   );
 }

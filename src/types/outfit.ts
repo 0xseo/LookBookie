@@ -13,10 +13,14 @@ export type Outfit = {
   id: number;
   name: string;
   stickers: OutfitSticker[];
+  canvasWidth: number | null;
+  canvasHeight: number | null;
   createdAt: string;
 };
 
 export type NewOutfit = {
   name: string;
   stickers: OutfitSticker[];
+  canvasWidth?: number | null;
+  canvasHeight?: number | null;
 };

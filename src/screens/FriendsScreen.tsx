@@ -14,18 +14,28 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
-import type { FriendOutfit, FriendProfile, FriendWardrobeItem } from '../types/friends';
+import type {
+  FriendOutfit,
+  FriendOutfitSticker,
+  FriendProfile,
+  FriendRequest,
+  FriendWardrobeItem,
+} from '../types/friends';
 
 type FriendsScreenProps = {
   isCloudConfigured: boolean;
   cloudEmail: string | null;
   isFriendBusy: boolean;
   friends: FriendProfile[];
+  incomingFriendRequests: FriendRequest[];
+  outgoingFriendRequests: FriendRequest[];
   selectedFriend: FriendProfile | null;
   friendWardrobeItems: FriendWardrobeItem[];
   friendOutfits: FriendOutfit[];
   bottomInset: number;
-  onAddFriend: (email: string) => Promise<void>;
+  onSendFriendRequest: (email: string) => Promise<void>;
+  onAcceptFriendRequest: (request: FriendRequest) => Promise<void>;
+  onDeclineFriendRequest: (request: FriendRequest) => Promise<void>;
   onSelectFriend: (friend: FriendProfile) => Promise<void>;
   onOpenProfile: () => void;
 };
@@ -40,11 +50,15 @@ export function FriendsScreen({
   cloudEmail,
   isFriendBusy,
   friends,
+  incomingFriendRequests,
+  outgoingFriendRequests,
   selectedFriend,
   friendWardrobeItems,
   friendOutfits,
   bottomInset,
-  onAddFriend,
+  onSendFriendRequest,
+  onAcceptFriendRequest,
+  onDeclineFriendRequest,
   onSelectFriend,
   onOpenProfile,
 }: FriendsScreenProps) {
@@ -59,7 +73,7 @@ export function FriendsScreen({
       return;
     }
 
-    await onAddFriend(friendEmail.trim());
+    await onSendFriendRequest(friendEmail.trim());
     setFriendEmail('');
   };
 
@@ -93,7 +107,7 @@ export function FriendsScreen({
         ) : (
           <>
             <View style={styles.panel}>
-              <Text style={styles.sectionTitle}>친구 추가</Text>
+              <Text style={styles.sectionTitle}>친구 요청</Text>
               <View style={styles.friendInputRow}>
                 <TextInput
                   value={friendEmail}
@@ -110,10 +124,60 @@ export function FriendsScreen({
                   style={[styles.addFriendButton, isFriendBusy && styles.disabledButton]}
                   hitSlop={8}
                 >
-                  <Text style={styles.primaryButtonText}>추가</Text>
+                  <Text style={styles.primaryButtonText}>요청</Text>
                 </Pressable>
               </View>
             </View>
+
+            {incomingFriendRequests.length > 0 ? (
+              <View style={styles.panel}>
+                <Text style={styles.sectionTitle}>받은 요청</Text>
+                <View style={styles.requestList}>
+                  {incomingFriendRequests.map((request) => (
+                    <View key={request.friendshipId} style={styles.requestRow}>
+                      <View style={styles.requestTextGroup}>
+                        <Text style={styles.requestName}>
+                          {request.displayName ?? request.email}
+                        </Text>
+                        <Text style={styles.panelCaption}>{request.email}</Text>
+                      </View>
+                      <Pressable
+                        onPress={() => onDeclineFriendRequest(request)}
+                        disabled={isFriendBusy}
+                        style={styles.requestGhostButton}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.requestGhostButtonText}>거절</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => onAcceptFriendRequest(request)}
+                        disabled={isFriendBusy}
+                        style={styles.requestAcceptButton}
+                        hitSlop={8}
+                      >
+                        <Text style={styles.primaryButtonText}>수락</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {outgoingFriendRequests.length > 0 ? (
+              <View style={styles.panel}>
+                <Text style={styles.sectionTitle}>보낸 요청</Text>
+                <View style={styles.friendList}>
+                  {outgoingFriendRequests.map((request) => (
+                    <View key={request.friendshipId} style={styles.pendingChip}>
+                      <Text style={styles.pendingChipText}>
+                        {request.displayName ?? request.email}
+                      </Text>
+                      <Text style={styles.pendingBadge}>대기</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             <View style={styles.panel}>
               <Text style={styles.sectionTitle}>친구 목록</Text>
@@ -195,25 +259,11 @@ export function FriendsScreen({
                     ) : (
                       friendOutfits.map((outfit) => (
                         <View key={outfit.id} style={styles.outfitCard}>
-                          <View style={styles.outfitPreview}>
-                            {outfit.stickers
-                              .filter((sticker) => sticker.remoteImageUrl)
-                              .slice(0, 5)
-                              .map((sticker, index) => (
-                                <Image
-                                  key={`${outfit.id}-${index}`}
-                                  source={{ uri: sticker.remoteImageUrl ?? undefined }}
-                                  style={[
-                                    styles.outfitImage,
-                                    {
-                                      left: 16 + index * 24,
-                                      top: 18 + index * 10,
-                                      transform: [{ rotate: `${sticker.rotation * 0.2}deg` }],
-                                    },
-                                  ]}
-                                />
-                              ))}
-                          </View>
+                          <FriendOutfitPreview
+                            stickers={outfit.stickers}
+                            canvasWidth={outfit.canvasWidth}
+                            canvasHeight={outfit.canvasHeight}
+                          />
                           <Text style={styles.outfitName}>{outfit.name}</Text>
                         </View>
                       ))
@@ -245,6 +295,100 @@ function ModeButton({ label, selected, onPress }: ModeButtonProps) {
       <Text style={[styles.modeButtonText, selected && styles.modeButtonTextSelected]}>{label}</Text>
     </Pressable>
   );
+}
+
+type FriendOutfitPreviewProps = {
+  stickers: FriendOutfitSticker[];
+  canvasWidth: number | null;
+  canvasHeight: number | null;
+};
+
+function FriendOutfitPreview({
+  stickers,
+  canvasWidth,
+  canvasHeight,
+}: FriendOutfitPreviewProps) {
+  const previewSize = 148;
+  const layout = getFriendPreviewLayout(stickers, canvasWidth, canvasHeight, previewSize);
+
+  return (
+    <View style={[styles.outfitPreview, { width: previewSize, alignSelf: 'center' }]}>
+      {stickers
+        .filter((sticker) => sticker.remoteImageUrl)
+        .slice()
+        .sort((first, second) => first.zIndex - second.zIndex)
+        .map((sticker, index) => (
+          <Image
+            key={`${sticker.remoteImageUrl}-${index}`}
+            source={{ uri: sticker.remoteImageUrl ?? undefined }}
+            style={[
+              styles.outfitImage,
+              {
+                left: layout.offsetX + (sticker.x - layout.minX) * layout.scale,
+                top: layout.offsetY + (sticker.y - layout.minY) * layout.scale,
+                width: sticker.size * layout.scale,
+                height: sticker.size * layout.scale,
+                transform: [{ rotate: `${sticker.rotation}deg` }],
+                zIndex: sticker.zIndex,
+              },
+            ]}
+          />
+        ))}
+    </View>
+  );
+}
+
+function getFriendPreviewLayout(
+  stickers: FriendOutfitSticker[],
+  canvasWidth: number | null,
+  canvasHeight: number | null,
+  previewSize: number,
+) {
+  if (canvasWidth && canvasHeight) {
+    const scale = Math.min(previewSize / canvasWidth, previewSize / canvasHeight);
+
+    return {
+      minX: 0,
+      minY: 0,
+      offsetX: (previewSize - canvasWidth * scale) / 2,
+      offsetY: (previewSize - canvasHeight * scale) / 2,
+      scale,
+    };
+  }
+
+  if (stickers.length === 0) {
+    return { minX: 0, minY: 0, offsetX: 0, offsetY: 0, scale: 1 };
+  }
+
+  const bounds = stickers.reduce(
+    (current, sticker) => ({
+      minX: Math.min(current.minX, sticker.x),
+      minY: Math.min(current.minY, sticker.y),
+      maxX: Math.max(current.maxX, sticker.x + sticker.size),
+      maxY: Math.max(current.maxY, sticker.y + sticker.size),
+    }),
+    {
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxX: 0,
+      maxY: 0,
+    },
+  );
+  const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const inset = 12;
+  const scale = Math.min(
+    (previewSize - inset * 2) / contentWidth,
+    (previewSize - inset * 2) / contentHeight,
+  );
+
+  return {
+    minX: bounds.minX,
+    minY: bounds.minY,
+    offsetX: (previewSize - contentWidth * scale) / 2,
+    offsetY: (previewSize - contentHeight * scale) / 2,
+    scale,
+  };
 }
 
 const styles = StyleSheet.create({
@@ -352,6 +496,51 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
+  requestList: {
+    gap: 8,
+  },
+  requestRow: {
+    minHeight: 56,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  requestTextGroup: {
+    flex: 1,
+  },
+  requestName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  requestAcceptButton: {
+    minWidth: 56,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  requestGhostButton: {
+    minWidth: 56,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  requestGhostButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
   friendChip: {
     minHeight: 44,
     paddingHorizontal: 16,
@@ -372,6 +561,33 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   friendChipTextSelected: {
+    color: COLORS.primary,
+  },
+  pendingChip: {
+    minHeight: 44,
+    paddingLeft: 16,
+    paddingRight: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pendingChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  pendingBadge: {
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: COLORS.secondary,
+    fontSize: 11,
+    fontWeight: '700',
     color: COLORS.primary,
   },
   segmentedControl: {

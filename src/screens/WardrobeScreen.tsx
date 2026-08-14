@@ -16,6 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/colors';
 import type { CategoryFilter, ClothingItem } from '../types/clothing';
 import { CATEGORY_FILTERS } from '../types/clothing';
+import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
+import { clothingMatchesSearch } from '../services/colorSearch';
 
 type WardrobeScreenProps = {
   items: ClothingItem[];
@@ -42,6 +44,7 @@ export function WardrobeScreen({
 }: WardrobeScreenProps) {
   const { width } = useWindowDimensions();
   const [searchQuery, setSearchQuery] = useState('');
+  const { colorOptions } = useColorPaletteOptions();
 
   const tileSize = useMemo(() => {
     const availableWidth = width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1);
@@ -49,25 +52,8 @@ export function WardrobeScreen({
     return Math.floor(availableWidth / GRID_COLUMNS);
   }, [width]);
   const visibleItems = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return items;
-    }
-
-    return items.filter((item) =>
-      [
-        item.name,
-        item.brand,
-        item.category,
-        item.color,
-        ...item.seasons,
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(normalizedQuery),
-    );
-  }, [items, searchQuery]);
+    return items.filter((item) => clothingMatchesSearch(item, searchQuery, colorOptions));
+  }, [colorOptions, items, searchQuery]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
