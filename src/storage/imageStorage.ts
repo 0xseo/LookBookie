@@ -21,6 +21,11 @@ export type ProcessedWardrobeImage = {
   backgroundRemoved: boolean;
 };
 
+export type RestoredWardrobeImage = {
+  uri: string | null;
+  source: 'local' | 'downloaded' | 'remote' | 'missing';
+};
+
 export async function processWardrobeImage(sourceUri: string): Promise<ProcessedWardrobeImage> {
   const probe = await ImageManipulator.manipulate(sourceUri).renderAsync();
   const context = ImageManipulator.manipulate(sourceUri);
@@ -128,6 +133,45 @@ export async function saveWardrobeImage(sourceUri: string) {
   return targetFile.uri;
 }
 
+export async function restoreWardrobeImageFromBackup(
+  localImagePath: string | null | undefined,
+  remoteImageUrl: string | null | undefined,
+): Promise<RestoredWardrobeImage> {
+  const localPath = localImagePath?.trim() ?? '';
+  const remoteUrl = getBackupRemoteImageUrl(localPath, remoteImageUrl);
+
+  if (isAvailableLocalImage(localPath)) {
+    return { uri: localPath, source: 'local' };
+  }
+
+  if (!remoteUrl) {
+    return { uri: null, source: 'missing' };
+  }
+
+  const imageDirectory = new Directory(Paths.document, WARDROBE_IMAGE_DIRECTORY);
+  imageDirectory.create({ idempotent: true, intermediates: true });
+  const extension = getFileExtension(remoteUrl);
+  const uniqueSuffix = Math.random().toString(36).slice(2, 8);
+  const targetFile = new File(
+    imageDirectory,
+    `restored-clothing-${Date.now()}-${uniqueSuffix}.${extension}`,
+  );
+
+  try {
+    const downloadedFile = await File.downloadFileAsync(remoteUrl, targetFile, {
+      idempotent: true,
+    });
+
+    if (downloadedFile.exists && (downloadedFile.size ?? 0) > 0) {
+      return { uri: downloadedFile.uri, source: 'downloaded' };
+    }
+  } catch {
+    // The public cloud URL still lets the image render while the device is online.
+  }
+
+  return { uri: remoteUrl, source: 'remote' };
+}
+
 export async function readImageAsDataUrl(sourceUri: string) {
   const sourceFile = new File(sourceUri);
   const extension = getFileExtension(sourceUri);
@@ -158,6 +202,29 @@ function getFileExtension(uri: string) {
   const match = cleanUri.match(/\.([a-zA-Z0-9]+)$/);
 
   return match?.[1]?.toLowerCase() ?? 'jpg';
+}
+
+function isAvailableLocalImage(uri: string) {
+  if (!uri || !/^file:\/\//i.test(uri)) {
+    return false;
+  }
+
+  try {
+    const file = new File(uri);
+    return file.exists && (file.size ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+function getBackupRemoteImageUrl(localImagePath: string, remoteImageUrl?: string | null) {
+  const remoteUrl = remoteImageUrl?.trim() ?? '';
+
+  if (/^https:\/\//i.test(remoteUrl)) {
+    return remoteUrl;
+  }
+
+  return /^https:\/\//i.test(localImagePath) ? localImagePath : null;
 }
 
 function getContentType(extension: string) {

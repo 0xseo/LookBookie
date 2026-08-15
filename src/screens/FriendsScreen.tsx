@@ -2,12 +2,13 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Search,
   Turtle,
+  X,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Image,
   KeyboardAvoidingView,
@@ -24,6 +25,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
+import { AppAlert } from "../components/AppDialog";
 import { useCategoryOptions } from "../hooks/useCategoryOptions";
 import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
@@ -39,7 +41,7 @@ import type { CategoryFilter, ColorOption } from "../types/clothing";
 
 type FriendsScreenProps = {
   isCloudConfigured: boolean;
-  cloudEmail: string | null;
+  isCloudSignedIn: boolean;
   isFriendBusy: boolean;
   friends: FriendProfile[];
   incomingFriendRequests: FriendRequest[];
@@ -65,7 +67,7 @@ const SIDE_PADDING = 16;
 
 export function FriendsScreen({
   isCloudConfigured,
-  cloudEmail,
+  isCloudSignedIn,
   isFriendBusy,
   friends,
   incomingFriendRequests,
@@ -83,7 +85,8 @@ export function FriendsScreen({
   onOpenProfile,
 }: FriendsScreenProps) {
   const { width } = useWindowDimensions();
-  const [friendEmail, setFriendEmail] = useState("");
+  const [friendIdentifier, setFriendIdentifier] = useState("");
+  const [friendListSearchQuery, setFriendListSearchQuery] = useState("");
   const [mode, setMode] = useState<FriendViewMode>("wardrobe");
   const [detailVisible, setDetailVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -125,18 +128,37 @@ export function FriendsScreen({
       ),
     [colorOptions, friendOutfits, searchQuery]
   );
+  const visibleFriends = useMemo(() => {
+    const normalizedQuery = friendListSearchQuery.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return friends;
+    }
+
+    const normalizedHandleQuery = normalizedQuery.replace(/^@/, "");
+
+    return friends.filter((friend) => {
+      const displayName = friend.displayName?.trim().toLowerCase() ?? "";
+      const handle = friend.handle.toLowerCase();
+
+      return (
+        displayName.includes(normalizedQuery) ||
+        handle.includes(normalizedHandleQuery)
+      );
+    });
+  }, [friendListSearchQuery, friends]);
 
   const submitFriend = async () => {
-    if (!friendEmail.trim()) {
-      Alert.alert(
-        "친구 이메일이 필요해북",
-        "추가할 친구의 이메일을 입력해 주세요."
+    if (!friendIdentifier.trim()) {
+      AppAlert.alert(
+        "친구 정보가 필요해북",
+        "추가할 친구의 룩부기 ID를 입력해 주세요."
       );
       return;
     }
 
-    await onSendFriendRequest(friendEmail.trim());
-    setFriendEmail("");
+    await onSendFriendRequest(friendIdentifier.trim());
+    setFriendIdentifier("");
   };
 
   const openFriend = async (friend: FriendProfile) => {
@@ -203,10 +225,10 @@ export function FriendsScreen({
             </View>
             <View style={styles.detailTitleGroup}>
               <Text style={styles.detailTitle} numberOfLines={1}>
-                {selectedFriend.displayName ?? selectedFriend.email}
+                {getFriendDisplayName(selectedFriend)}
               </Text>
               <Text style={styles.caption} numberOfLines={1}>
-                {selectedFriend.email}
+                {getFriendSecondaryText(selectedFriend)}
               </Text>
             </View>
             <Pressable
@@ -419,7 +441,7 @@ export function FriendsScreen({
                 친구 기능은 Supabase 설정이 있어야 사용할 수 있어요.
               </Text>
             </View>
-          ) : !cloudEmail ? (
+          ) : !isCloudSignedIn ? (
             <View style={styles.panel}>
               <Text style={styles.sectionTitle}>로그인이 필요해북</Text>
               <Text style={styles.panelText}>
@@ -439,11 +461,11 @@ export function FriendsScreen({
                 <Text style={styles.sectionTitle}>친구 요청</Text>
                 <View style={styles.friendInputRow}>
                   <TextInput
-                    value={friendEmail}
-                    onChangeText={setFriendEmail}
+                    value={friendIdentifier}
+                    onChangeText={setFriendIdentifier}
                     autoCapitalize="none"
-                    keyboardType="email-address"
-                    placeholder="친구 이메일"
+                    autoCorrect={false}
+                    placeholder="친구 룩부기 ID"
                     placeholderTextColor={COLORS.textSecondary}
                     style={styles.input}
                   />
@@ -475,9 +497,11 @@ export function FriendsScreen({
                       </View>
                       <View style={styles.requestTextGroup}>
                         <Text style={styles.requestName}>
-                          {request.displayName ?? request.email}
+                          {getFriendDisplayName(request)}
                         </Text>
-                        <Text style={styles.panelCaption}>{request.email}</Text>
+                        <Text style={styles.panelCaption}>
+                          {getFriendSecondaryText(request)}
+                        </Text>
                       </View>
                       <Pressable
                         onPress={() => onDeclineFriendRequest(request)}
@@ -513,7 +537,7 @@ export function FriendsScreen({
                         />
                       </View>
                       <Text style={styles.pendingName}>
-                        {request.displayName ?? request.email}
+                        {getFriendDisplayName(request)}
                       </Text>
                       <Text style={styles.pendingBadge}>대기</Text>
                     </View>
@@ -523,9 +547,40 @@ export function FriendsScreen({
 
               <View style={styles.friendSection}>
                 <Text style={styles.sectionTitle}>친구 목록</Text>
-                {friends.length > 0 ? (
+                <View style={styles.friendSearchRow}>
+                  <Search
+                    color={COLORS.textSecondary}
+                    size={18}
+                    strokeWidth={2}
+                  />
+                  <TextInput
+                    value={friendListSearchQuery}
+                    onChangeText={setFriendListSearchQuery}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="닉네임 또는 룩부기 ID 검색"
+                    placeholderTextColor={COLORS.textSecondary}
+                    style={styles.friendSearchInput}
+                    returnKeyType="search"
+                  />
+                  {friendListSearchQuery ? (
+                    <Pressable
+                      onPress={() => setFriendListSearchQuery("")}
+                      style={styles.clearSearchButton}
+                      accessibilityLabel="친구 검색어 지우기"
+                      hitSlop={8}
+                    >
+                      <X
+                        color={COLORS.textSecondary}
+                        size={18}
+                        strokeWidth={2}
+                      />
+                    </Pressable>
+                  ) : null}
+                </View>
+                {visibleFriends.length > 0 ? (
                   <View style={styles.friendList}>
-                    {friends.map((friend) => (
+                    {visibleFriends.map((friend) => (
                       <Pressable
                         key={friend.id}
                         onPress={() => openFriend(friend)}
@@ -541,10 +596,10 @@ export function FriendsScreen({
                         </View>
                         <View style={styles.friendTextGroup}>
                           <Text style={styles.friendName}>
-                            {friend.displayName ?? friend.email}
+                            {getFriendDisplayName(friend)}
                           </Text>
                           <Text style={styles.panelCaption}>
-                            {friend.email}
+                            {getFriendSecondaryText(friend)}
                           </Text>
                         </View>
                         <ChevronRight
@@ -557,7 +612,9 @@ export function FriendsScreen({
                   </View>
                 ) : (
                   <Text style={styles.panelText}>
-                    아직 추가한 친구가 없어북.
+                    {friendListSearchQuery.trim()
+                      ? "일치하는 친구가 없어북."
+                      : "아직 추가한 친구가 없어북."}
                   </Text>
                 )}
               </View>
@@ -567,6 +624,14 @@ export function FriendsScreen({
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+function getFriendDisplayName(friend: FriendProfile) {
+  return friend.displayName ?? friend.handle;
+}
+
+function getFriendSecondaryText(friend: FriendProfile) {
+  return friend.handle;
 }
 
 function ModeButton({
@@ -912,6 +977,31 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   friendSection: { gap: 8 },
+  friendSearchRow: {
+    minHeight: 40,
+    paddingLeft: 14,
+    paddingRight: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  friendSearchInput: {
+    flex: 1,
+    minHeight: 40,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+  },
+  clearSearchButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   friendList: { gap: 8 },
   friendRow: {
     minHeight: 64,

@@ -53,18 +53,21 @@ type LookBoogieDatabase = {
       profiles: {
         Row: {
           id: string;
-          email: string;
+          email: string | null;
+          handle: string;
           display_name: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id: string;
-          email: string;
+          email?: string | null;
+          handle?: string;
           display_name?: string | null;
         };
         Update: {
-          email?: string;
+          email?: string | null;
+          handle?: string;
           display_name?: string | null;
           updated_at?: string;
         };

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Image,
   KeyboardAvoidingView,
@@ -17,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
+import { AppAlert } from '../components/AppDialog';
 import { ColorPalettePicker } from '../components/ColorPalettePicker';
 import { RepresentativeColorExtractor } from '../components/RepresentativeColorExtractor';
 import { ImageCropScreen } from './ImageCropScreen';
@@ -102,7 +102,7 @@ export function ClothingDetailScreen({
       return;
     }
 
-    Alert.alert('수정을 그만할까북?', '저장하지 않은 변경사항은 사라져요.', [
+    AppAlert.alert('수정을 그만할까북?', '저장하지 않은 변경사항은 사라져요.', [
       { text: '계속 수정', style: 'cancel' },
       { text: '나가기', style: 'destructive', onPress: onClose },
     ]);
@@ -215,7 +215,7 @@ export function ClothingDetailScreen({
 
       onSaved();
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         '수정 저장에 실패했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );
@@ -226,7 +226,7 @@ export function ClothingDetailScreen({
   };
 
   const confirmDelete = () => {
-    Alert.alert('이 옷을 삭제할까북?', '옷장에서 삭제하면 목록에서 사라져요.', [
+    AppAlert.alert('이 옷을 삭제할까북?', '옷장에서 삭제하면 목록에서 사라져요.', [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',
@@ -244,7 +244,7 @@ export function ClothingDetailScreen({
       await deleteClothingItem(item.id);
       onDeleted();
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         '삭제에 실패했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );

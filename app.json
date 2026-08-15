@@ -2,16 +2,18 @@
   "expo": {
     "name": "룩부기",
     "slug": "lookboogie",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "lookboogie",
     "icon": "./icon.png",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lookboogie.app"
     },
     "android": {
-      "package": "com.lookboogie.app"
+      "package": "com.lookboogie.app",
+      "versionCode": 2
     },
     "plugins": [
       [
@@ -32,7 +34,8 @@
           "imageWidth": 320,
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

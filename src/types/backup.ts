@@ -11,4 +11,12 @@ export type LocalBackupPayload = {
 export type LocalBackupImportResult = {
   clothesCount: number;
   outfitsCount: number;
+  downloadedImageCount: number;
+  remoteFallbackImageCount: number;
+  skippedImageCount: number;
 };
+
+export type LocalBackupDatabaseImportResult = Pick<
+  LocalBackupImportResult,
+  'clothesCount' | 'outfitsCount'
+>;

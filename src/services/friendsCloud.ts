@@ -22,14 +22,14 @@ export async function ensureCurrentProfile() {
     throw error;
   }
 
-  if (!user?.email) {
+  if (!user) {
     return null;
   }
 
-  const email = user.email.trim().toLowerCase();
+  const email = user.email?.trim().toLowerCase() || null;
   const { data: existingProfile, error: profileError } = await client
     .from('profiles')
-    .select('id,email,display_name')
+    .select('id,email,handle,display_name')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -46,7 +46,7 @@ export async function ensureCurrentProfile() {
       .from('profiles')
       .update({ email, updated_at: new Date().toISOString() })
       .eq('id', user.id)
-      .select('id,email,display_name')
+      .select('id,email,handle,display_name')
       .single();
 
     if (updateError) {
@@ -61,9 +61,9 @@ export async function ensureCurrentProfile() {
     .insert({
       id: user.id,
       email,
-      display_name: email.split('@')[0] ?? email,
+      display_name: getDefaultDisplayName(user),
     })
-    .select('id,email,display_name')
+    .select('id,email,handle,display_name')
     .single();
 
   if (insertError) {
@@ -90,7 +90,7 @@ export async function updateCurrentProfileDisplayName(displayNameInput: string) 
     .from('profiles')
     .update({ display_name: displayName, updated_at: new Date().toISOString() })
     .eq('id', user.id)
-    .select('id,email,display_name')
+    .select('id,email,handle,display_name')
     .single();
 
   if (error) {
@@ -104,6 +104,37 @@ export async function updateCurrentProfileDisplayName(displayNameInput: string) 
   return mapProfile(data);
 }
 
+export async function updateCurrentProfileHandle(handleInput: string) {
+  const user = await getCloudUser();
+  const client = getConfiguredSupabase();
+  const handle = normalizeHandle(handleInput);
+
+  if (!/^[a-z0-9][a-z0-9._-]{2,19}$/.test(handle)) {
+    throw new Error('룩부기 ID는 영문 소문자, 숫자, 점, 밑줄, 하이픈으로 3~20자여야 해요.');
+  }
+
+  const { data, error } = await client
+    .from('profiles')
+    .update({ handle, updated_at: new Date().toISOString() })
+    .eq('id', user.id)
+    .select('id,email,handle,display_name')
+    .single();
+
+  if (error?.code === '23505') {
+    throw new Error('이미 사용 중인 룩부기 ID예요.');
+  }
+
+  if (error) {
+    throw error;
+  }
+
+  if (data.handle !== handle) {
+    throw new Error('룩부기 ID가 서버에 반영되지 않았어요.');
+  }
+
+  return mapProfile(data);
+}
+
 type FriendshipRow = {
   id: string;
   owner_id: string;
@@ -112,21 +143,21 @@ type FriendshipRow = {
   created_at: string;
 };
 
-export async function sendFriendRequestByEmail(emailInput: string) {
+export async function sendFriendRequestByHandle(handleInput: string) {
   const user = await getCloudUser();
   const client = getConfiguredSupabase();
-  const email = emailInput.trim().toLowerCase();
+  const handle = normalizeHandle(handleInput);
 
-  if (!email) {
-    throw new Error('친구 이메일을 입력해 주세요.');
+  if (!handle) {
+    throw new Error('친구의 룩부기 ID를 입력해 주세요.');
   }
 
   await ensureCurrentProfile();
 
   const { data: friend, error: friendError } = await client
     .from('profiles')
-    .select('id,email,display_name')
-    .eq('email', email)
+    .select('id,email,handle,display_name')
+    .eq('handle', handle)
     .maybeSingle();
 
   if (friendError) {
@@ -134,7 +165,7 @@ export async function sendFriendRequestByEmail(emailInput: string) {
   }
 
   if (!friend) {
-    throw new Error('해당 이메일의 룩부기 프로필을 찾지 못했어요.');
+    throw new Error('해당 룩부기 ID의 프로필을 찾지 못했어요.');
   }
 
   if (friend.id === user.id) {
@@ -225,7 +256,7 @@ export async function listFriends() {
 
   const { data: profiles, error: profilesError } = await client
     .from('profiles')
-    .select('id,email,display_name')
+    .select('id,email,handle,display_name')
     .in('id', friendIds);
 
   if (profilesError) {
@@ -376,14 +407,45 @@ function getConfiguredSupabase() {
 
 function mapProfile(profile: {
   id: string;
-  email: string;
+  email: string | null;
+  handle: string;
   display_name: string | null;
 }): FriendProfile {
   return {
     id: profile.id,
     email: profile.email,
+    handle: profile.handle,
     displayName: profile.display_name,
   };
+}
+
+function getDefaultDisplayName(user: Awaited<ReturnType<typeof getCloudUser>>) {
+  const metadata = user.user_metadata as Record<string, unknown>;
+  const nickname = [
+    metadata.nickname,
+    metadata.preferred_username,
+    metadata.name,
+    metadata.full_name,
+  ].find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  if (nickname) {
+    const normalizedNickname = nickname.trim();
+    const isKakao =
+      user.app_metadata.provider === 'kakao' ||
+      user.app_metadata.providers?.includes('kakao');
+
+    return isKakao ? `${normalizedNickname}@kakao` : normalizedNickname;
+  }
+
+  if (user.email) {
+    return user.email.split('@')[0] || user.email;
+  }
+
+  return '룩부기 사용자';
+}
+
+function normalizeHandle(value: string) {
+  return value.trim().replace(/^@/, '').toLowerCase();
 }
 
 function parseFriendOutfitStickers(value: unknown): FriendOutfitSticker[] {
@@ -434,7 +496,7 @@ async function mapFriendRequests(
   const client = getConfiguredSupabase();
   const { data: profiles, error } = await client
     .from('profiles')
-    .select('id,email,display_name')
+    .select('id,email,handle,display_name')
     .in('id', profileIds);
 
   if (error) {

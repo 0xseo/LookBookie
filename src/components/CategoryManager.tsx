@@ -1,9 +1,10 @@
 import { Pencil, Plus } from 'lucide-react-native';
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { COLORS } from '../../constants/colors';
 import type { ClothingCategory } from '../types/clothing';
+import { AppAlert } from './AppDialog';
 import { ReorderHandle } from './ReorderHandle';
 
 type CategoryRename = {
@@ -56,7 +57,7 @@ export function CategoryManager({ categories, onChange }: CategoryManagerProps) 
     const nextName = draftName.trim() as ClothingCategory;
 
     if (!nextName) {
-      Alert.alert('카테고리 이름이 필요해북', '이름을 입력해 주세요.');
+      AppAlert.alert('카테고리 이름이 필요해북', '이름을 입력해 주세요.');
       return;
     }
 
@@ -65,7 +66,7 @@ export function CategoryManager({ categories, onChange }: CategoryManagerProps) 
         (category) => category === nextName && category !== editingCategory,
       )
     ) {
-      Alert.alert('이미 있는 카테고리이어북', '다른 이름을 사용해 주세요.');
+      AppAlert.alert('이미 있는 카테고리이어북', '다른 이름을 사용해 주세요.');
       return;
     }
 
@@ -88,7 +89,7 @@ export function CategoryManager({ categories, onChange }: CategoryManagerProps) 
       setOrderedCategories(nextCategories);
       closeEditor();
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         '카테고리 저장에 실패했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );
@@ -119,7 +120,7 @@ export function CategoryManager({ categories, onChange }: CategoryManagerProps) 
     } catch (error) {
       setOrderedCategories(categories);
       orderRef.current = categories;
-      Alert.alert(
+      AppAlert.alert(
         '순서를 저장하지 못했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );

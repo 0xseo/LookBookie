@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Modal, StatusBar, StyleSheet, View } from "react-native";
+import { Modal, StatusBar, StyleSheet, View } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 import {
   SafeAreaProvider,
@@ -7,6 +7,7 @@ import {
 } from "react-native-safe-area-context";
 
 import { BottomTabs, type AppTab } from "./src/components/BottomTabs";
+import { AppAlert, AppDialogProvider } from "./src/components/AppDialog";
 import { COLORS } from "./constants/colors";
 import {
   AddItemScreen,
@@ -20,13 +21,34 @@ import { WardrobeScreen } from "./src/screens/WardrobeScreen";
 import {
   countCloudPendingClothingItems,
   countOutfits,
+  detachAllLocalCloudData,
   initDatabase,
   listCloudPendingClothingItems,
   listClothingItems,
   updateClothingCloudState,
 } from "./src/storage/database";
+import { deleteCurrentCloudAccount } from "./src/services/accountCloud";
+import {
+  clearRememberedCloudAuthProvider,
+  getRememberedCloudAuthProvider,
+  rememberCloudAuthProvider,
+  sessionHasAuthProvider,
+  type CloudAuthProvider,
+} from "./src/services/authProvider";
 import { isSupabaseConfigured } from "./src/services/supabaseClient";
 import type { CloudSession } from "./src/services/supabaseClient";
+import {
+  signInWithSocialProvider,
+  type SocialAuthProvider,
+} from "./src/services/socialAuth";
+import {
+  signInWithNativeGoogle,
+  signOutNativeGoogle,
+} from "./src/services/nativeGoogleAuth";
+import {
+  signInWithNativeKakao,
+  signOutNativeKakao,
+} from "./src/services/nativeKakaoAuth";
 import {
   getExistingClothingRemoteRecordIds,
   getCurrentCloudSession,
@@ -39,6 +61,7 @@ import {
 import {
   exportLocalBackupFile,
   importLocalBackupFile,
+  repairStoredBackupImagePaths,
 } from "./src/services/backupService";
 import {
   acceptFriendRequest,
@@ -49,8 +72,9 @@ import {
   listFriendOutfits,
   listFriendWardrobe,
   listOutgoingFriendRequests,
-  sendFriendRequestByEmail,
+  sendFriendRequestByHandle,
   updateCurrentProfileDisplayName,
+  updateCurrentProfileHandle,
 } from "./src/services/friendsCloud";
 import type { CategoryFilter, ClothingItem } from "./src/types/clothing";
 import type {
@@ -60,7 +84,7 @@ import type {
   FriendWardrobeItem,
 } from "./src/types/friends";
 
-const SPLASH_SCREEN_DURATION_MS = 2_000;
+const SPLASH_SCREEN_DURATION_MS = 1_500;
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -75,7 +99,9 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <AppContent />
+      <AppDialogProvider>
+        <AppContent />
+      </AppDialogProvider>
     </SafeAreaProvider>
   );
 }
@@ -93,12 +119,16 @@ function AppContent() {
   const [isDatabaseReady, setIsDatabaseReady] = useState(false);
   const [outfitsCount, setOutfitsCount] = useState(0);
   const [cloudSession, setCloudSession] = useState<CloudSession | null>(null);
+  const [cloudProvider, setCloudProvider] =
+    useState<CloudAuthProvider | null>(null);
   const [pendingCloudCount, setPendingCloudCount] = useState(0);
   const [isCloudBusy, setIsCloudBusy] = useState(false);
   const [isBackupBusy, setIsBackupBusy] = useState(false);
   const [isFriendBusy, setIsFriendBusy] = useState(false);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
-  const [currentProfile, setCurrentProfile] = useState<FriendProfile | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<FriendProfile | null>(
+    null
+  );
   const [incomingFriendRequests, setIncomingFriendRequests] = useState<
     FriendRequest[]
   >([]);
@@ -113,7 +143,7 @@ function AppContent() {
   >([]);
   const [friendOutfits, setFriendOutfits] = useState<FriendOutfit[]>([]);
   const addItemScreenRef = useRef<AddItemScreenHandle>(null);
-  const tabBarInset = 64 + Math.max(8, insets.bottom);
+  const tabBarInset = Math.max(8, insets.bottom);
 
   const visibleItems =
     selectedCategory === "전체"
@@ -127,7 +157,7 @@ function AppContent() {
       const storedItems = await listClothingItems("전체");
       setItems(storedItems);
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "옷장을 불러오지 못했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -141,7 +171,7 @@ function AppContent() {
       const storedOutfitCount = await countOutfits();
       setOutfitsCount(storedOutfitCount);
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "코디 수를 불러오지 못했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -153,7 +183,7 @@ function AppContent() {
       const storedPendingCount = await countCloudPendingClothingItems();
       setPendingCloudCount(storedPendingCount);
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "동기화 상태를 불러오지 못했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -180,7 +210,7 @@ function AppContent() {
       setIncomingFriendRequests(incomingRequests);
       setOutgoingFriendRequests(outgoingRequests);
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "친구 목록을 불러오지 못했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -209,7 +239,8 @@ function AppContent() {
     );
     const missingItems = cloudReferenceItems.filter(
       (item) =>
-        !item.remoteRecordId || !existingRemoteRecordIds.has(item.remoteRecordId)
+        !item.remoteRecordId ||
+        !existingRemoteRecordIds.has(item.remoteRecordId)
     );
     const verifiedRestoredItems = cloudReferenceItems.filter(
       (item) =>
@@ -218,30 +249,28 @@ function AppContent() {
         existingRemoteRecordIds.has(item.remoteRecordId)
     );
 
-    await Promise.all(
-      [
-        ...missingItems.map((item) =>
-          updateClothingCloudState(item.id, {
-            remoteImageUrl: item.remoteImageUrl,
-            remoteRecordId: null,
-            storagePath: null,
-            cloudSyncStatus: "pending",
-            cloudError: "클라우드에서 해당 옷을 찾지 못했어요.",
-            syncedAt: null,
-          })
-        ),
-        ...verifiedRestoredItems.map((item) =>
-          updateClothingCloudState(item.id, {
-            remoteImageUrl: item.remoteImageUrl,
-            remoteRecordId: item.remoteRecordId,
-            storagePath: item.storagePath,
-            cloudSyncStatus: "synced",
-            cloudError: null,
-            syncedAt: new Date().toISOString(),
-          })
-        ),
-      ]
-    );
+    await Promise.all([
+      ...missingItems.map((item) =>
+        updateClothingCloudState(item.id, {
+          remoteImageUrl: item.remoteImageUrl,
+          remoteRecordId: null,
+          storagePath: null,
+          cloudSyncStatus: "pending",
+          cloudError: "클라우드에서 해당 옷을 찾지 못했어요.",
+          syncedAt: null,
+        })
+      ),
+      ...verifiedRestoredItems.map((item) =>
+        updateClothingCloudState(item.id, {
+          remoteImageUrl: item.remoteImageUrl,
+          remoteRecordId: item.remoteRecordId,
+          storagePath: item.storagePath,
+          cloudSyncStatus: "synced",
+          cloudError: null,
+          syncedAt: new Date().toISOString(),
+        })
+      ),
+    ]);
 
     return missingItems.length > 0 || verifiedRestoredItems.length > 0;
   }, [cloudSession, isDatabaseReady]);
@@ -254,8 +283,18 @@ function AppContent() {
         await loadItems();
         await loadOutfitCount();
         await loadCloudPendingCount();
+
+        try {
+          const repairedImageCount = await repairStoredBackupImagePaths();
+
+          if (repairedImageCount > 0) {
+            await loadItems();
+          }
+        } catch {
+          // Existing local data remains usable when cloud image recovery is unavailable.
+        }
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           "초기화에 실패했어북",
           error instanceof Error
             ? error.message
@@ -298,9 +337,11 @@ function AppContent() {
   useEffect(() => {
     async function loadSession() {
       try {
-        setCloudSession(await getCurrentCloudSession());
+        const session = await getCurrentCloudSession();
+        setCloudSession(session);
+        setCloudProvider(await getRememberedCloudAuthProvider(session));
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           "클라우드 세션을 확인하지 못했어북",
           error instanceof Error
             ? error.message
@@ -311,8 +352,17 @@ function AppContent() {
 
     loadSession();
 
-    return subscribeToCloudAuthChanges((_, session) => {
+    return subscribeToCloudAuthChanges((event, session) => {
       setCloudSession(session);
+
+      if (!session) {
+        setCloudProvider(null);
+        return;
+      }
+
+      if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+        void getRememberedCloudAuthProvider(session).then(setCloudProvider);
+      }
     });
   }, []);
 
@@ -333,7 +383,7 @@ function AppContent() {
         setCurrentProfile(await ensureCurrentProfile());
         await loadFriendList();
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           "클라우드 프로필을 준비하지 못했어북",
           error instanceof Error
             ? error.message
@@ -393,10 +443,17 @@ function AppContent() {
 
     try {
       await signInWithEmail(email, password);
-      setCloudSession(await getCurrentCloudSession());
+      const session = await getCurrentCloudSession();
+      setCloudSession(session);
+
+      if (session) {
+        await rememberCloudAuthProvider(session.user.id, "email");
+        setCloudProvider("email");
+      }
+
       await loadCloudPendingCount();
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "로그인에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -410,14 +467,53 @@ function AppContent() {
 
     try {
       await signUpWithEmail(email, password);
-      setCloudSession(await getCurrentCloudSession());
-      Alert.alert(
+      const session = await getCurrentCloudSession();
+      setCloudSession(session);
+
+      if (session) {
+        await rememberCloudAuthProvider(session.user.id, "email");
+        setCloudProvider("email");
+      }
+
+      AppAlert.alert(
         "가입 요청을 보냈어북",
         "이메일 확인이 필요하면 받은 편지함을 확인해 주세요."
       );
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "가입에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
+      );
+    } finally {
+      setIsCloudBusy(false);
+    }
+  };
+
+  const handleCloudSocialSignIn = async (provider: SocialAuthProvider) => {
+    setIsCloudBusy(true);
+
+    try {
+      let session: CloudSession | null;
+
+      if (provider === "google") {
+        session = await signInWithNativeGoogle();
+      } else if (provider === "kakao") {
+        session = await signInWithNativeKakao();
+      } else {
+        session = await signInWithSocialProvider(provider);
+      }
+
+      if (!session) {
+        return;
+      }
+
+      await rememberCloudAuthProvider(session.user.id, provider);
+      setCloudSession(session);
+      setCloudProvider(provider);
+      await loadCloudPendingCount();
+    } catch (error) {
+      AppAlert.alert(
+        "소셜 로그인에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
@@ -430,11 +526,58 @@ function AppContent() {
 
     try {
       await signOutCloud();
+
+      if (sessionHasAuthProvider(cloudSession, "google")) {
+        await signOutNativeGoogle();
+      }
+
+      if (sessionHasAuthProvider(cloudSession, "kakao")) {
+        await signOutNativeKakao();
+      }
+
+      await clearRememberedCloudAuthProvider();
       setCloudSession(null);
+      setCloudProvider(null);
       setCurrentProfile(null);
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "로그아웃에 실패했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
+      );
+    } finally {
+      setIsCloudBusy(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsCloudBusy(true);
+
+    try {
+      const signedInWithGoogle = sessionHasAuthProvider(cloudSession, "google");
+      const signedInWithKakao = sessionHasAuthProvider(cloudSession, "kakao");
+
+      await deleteCurrentCloudAccount();
+      const [localDetachResult] = await Promise.allSettled([
+        detachAllLocalCloudData(),
+        signedInWithGoogle ? signOutNativeGoogle() : Promise.resolve(),
+        signedInWithKakao ? signOutNativeKakao() : Promise.resolve(),
+      ]);
+
+      await clearRememberedCloudAuthProvider();
+      setCloudSession(null);
+      setCloudProvider(null);
+      setCurrentProfile(null);
+      setPendingCloudCount(0);
+      await Promise.allSettled([loadItems(), loadOutfitCount()]);
+      AppAlert.alert(
+        "탈퇴를 완료했어북",
+        localDetachResult.status === "fulfilled"
+          ? "클라우드 계정은 삭제됐고 이 기기의 옷과 코디는 로컬에 남아 있어요."
+          : "클라우드 계정은 삭제됐어요. 로컬 데이터 상태를 정리하려면 앱을 다시 열어 주세요."
+      );
+    } catch (error) {
+      AppAlert.alert(
+        "탈퇴를 완료하지 못했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
     } finally {
@@ -449,8 +592,25 @@ function AppContent() {
       const updatedProfile = await updateCurrentProfileDisplayName(displayName);
       setCurrentProfile(updatedProfile);
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "이름을 저장하지 못했어북",
+        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
+      );
+      throw error;
+    } finally {
+      setIsCloudBusy(false);
+    }
+  };
+
+  const handleUpdateProfileHandle = async (handle: string) => {
+    setIsCloudBusy(true);
+
+    try {
+      const updatedProfile = await updateCurrentProfileHandle(handle);
+      setCurrentProfile(updatedProfile);
+    } catch (error) {
+      AppAlert.alert(
+        "룩부기 ID를 저장하지 못했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
       throw error;
@@ -464,12 +624,17 @@ function AppContent() {
 
     try {
       const result = await exportLocalBackupFile();
-      Alert.alert(
-        "백업을 만들었어북",
-        result.shared ? "공유 시트로 백업 파일을 내보냈어요." : result.uri
+
+      if (!result) {
+        return;
+      }
+
+      AppAlert.alert(
+        "백업을 저장했어북",
+        `${result.fileName} 파일을 선택한 폴더에 저장했어요.`
       );
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "백업 내보내기에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -497,12 +662,16 @@ function AppContent() {
       await loadItems();
       await loadOutfitCount();
       await loadCloudPendingCount();
-      Alert.alert(
+      const skippedImageNotice =
+        result.skippedImageCount > 0
+          ? `\n사진 원본과 클라우드 URL이 없는 옷 ${result.skippedImageCount}개는 제외했어요.`
+          : "";
+      AppAlert.alert(
         "백업을 가져왔어북",
-        `옷 ${result.clothesCount}개와 코디 ${result.outfitsCount}개를 추가했어요.`
+        `옷 ${result.clothesCount}개와 코디 ${result.outfitsCount}개를 추가했어요.${skippedImageNotice}`
       );
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "백업 가져오기에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -511,18 +680,18 @@ function AppContent() {
     }
   };
 
-  const handleSendFriendRequest = async (email: string) => {
+  const handleSendFriendRequest = async (handle: string) => {
     setIsFriendBusy(true);
 
     try {
-      await sendFriendRequestByEmail(email);
+      await sendFriendRequestByHandle(handle);
       await loadFriendList();
-      Alert.alert(
+      AppAlert.alert(
         "친구 요청을 보냈어북",
         "상대가 수락하면 친구 옷장을 볼 수 있어요."
       );
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "친구 요청에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -538,7 +707,7 @@ function AppContent() {
       await acceptFriendRequest(request.friendshipId);
       await loadFriendList();
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "친구 요청 수락에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -554,7 +723,7 @@ function AppContent() {
       await declineFriendRequest(request.friendshipId);
       await loadFriendList();
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "친구 요청 처리에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -576,7 +745,7 @@ function AppContent() {
       setFriendWardrobeItems(wardrobeItems);
       setFriendOutfits(outfits);
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "친구 데이터를 불러오지 못했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -601,7 +770,7 @@ function AppContent() {
 
   const handleSyncPending = async () => {
     if (!isSupabaseConfigured) {
-      Alert.alert(
+      AppAlert.alert(
         "클라우드 설정이 필요해북",
         ".env에 Supabase URL과 publishable key를 넣어 주세요."
       );
@@ -609,7 +778,7 @@ function AppContent() {
     }
 
     if (!cloudSession) {
-      Alert.alert(
+      AppAlert.alert(
         "로그인이 필요해북",
         "마이페이지에서 Supabase 계정으로 로그인해 주세요."
       );
@@ -634,12 +803,12 @@ function AppContent() {
 
       await loadItems();
       await loadCloudPendingCount();
-      Alert.alert(
+      AppAlert.alert(
         "동기화 완료북",
         `${syncedCount}개의 옷을 클라우드에 올렸어요.`
       );
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "동기화에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -680,15 +849,20 @@ function AppContent() {
           outfitsCount={outfitsCount}
           pendingCloudCount={pendingCloudCount}
           isCloudConfigured={isSupabaseConfigured}
-          cloudEmail={cloudSession?.user.email ?? null}
+          isCloudSignedIn={Boolean(cloudSession)}
+          cloudProvider={cloudProvider}
           cloudDisplayName={currentProfile?.displayName ?? null}
+          cloudHandle={currentProfile?.handle ?? null}
           isCloudBusy={isCloudBusy}
           isBackupBusy={isBackupBusy}
           bottomInset={tabBarInset}
           onSignIn={handleCloudSignIn}
           onSignUp={handleCloudSignUp}
+          onSocialSignIn={handleCloudSocialSignIn}
           onSignOut={handleCloudSignOut}
+          onDeleteAccount={handleDeleteAccount}
           onUpdateDisplayName={handleUpdateDisplayName}
+          onUpdateHandle={handleUpdateProfileHandle}
           onSyncPending={handleSyncPending}
           onExportBackup={handleExportBackup}
           onImportBackup={handleImportBackup}
@@ -699,7 +873,7 @@ function AppContent() {
       {activeTab === "friends" ? (
         <FriendsScreen
           isCloudConfigured={isSupabaseConfigured}
-          cloudEmail={cloudSession?.user.email ?? null}
+          isCloudSignedIn={Boolean(cloudSession)}
           isFriendBusy={isFriendBusy}
           friends={friends}
           incomingFriendRequests={incomingFriendRequests}

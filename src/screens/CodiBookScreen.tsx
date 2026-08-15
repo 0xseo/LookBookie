@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   BackHandler,
   FlatList,
@@ -29,6 +28,7 @@ import {
 } from "lucide-react-native";
 
 import { COLORS } from "../../constants/colors";
+import { AppAlert } from "../components/AppDialog";
 import {
   deleteOutfitFromCloud,
   syncOutfitToCloud,
@@ -172,7 +172,7 @@ export function CodiBookScreen({
     try {
       setOutfits(await listOutfits());
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "코디북을 불러오지 못했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -298,7 +298,7 @@ export function CodiBookScreen({
 
   const saveOutfit = async () => {
     if (stickers.length === 0) {
-      Alert.alert("저장할 코디가 없어북", "옷을 먼저 선택해 주세요.");
+      AppAlert.alert("저장할 코디가 없어북", "옷을 먼저 선택해 주세요.");
       return;
     }
 
@@ -355,14 +355,14 @@ export function CodiBookScreen({
       await loadSavedOutfits();
       await onOutfitSaved();
       setMode("list");
-      Alert.alert(
+      AppAlert.alert(
         "저장했어북",
         cloudResult.cloudSyncStatus === "synced"
           ? "코디북에 저장하고 친구가 볼 수 있게 클라우드에도 올렸어요."
           : "코디북에 로컬 저장했어요. 클라우드는 로그인 후 다시 저장하면 공유돼요."
       );
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         "코디 저장에 실패했어북",
         error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
       );
@@ -376,7 +376,7 @@ export function CodiBookScreen({
       return;
     }
 
-    Alert.alert("코디를 삭제할까북?", "저장된 코디북 목록에서 사라져요.", [
+    AppAlert.alert("코디를 삭제할까북?", "저장된 코디북 목록에서 사라져요.", [
       { text: "취소", style: "cancel" },
       {
         text: "삭제",
@@ -398,7 +398,7 @@ export function CodiBookScreen({
             setStickers([]);
             setSelectedStickerId(null);
           } catch (error) {
-            Alert.alert(
+            AppAlert.alert(
               "코디 삭제에 실패했어북",
               error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
             );

@@ -6,7 +6,8 @@ export type FriendRequestDirection = 'incoming' | 'outgoing';
 
 export type FriendProfile = {
   id: string;
-  email: string;
+  email: string | null;
+  handle: string;
   displayName: string | null;
 };
 

@@ -99,7 +99,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.transparent,
   },
   label: {
-    marginTop: 3,
+    marginTop: 2,
+    marginBottom: 2,
     fontSize: 11,
     fontWeight: "500",
     color: COLORS.textSecondary,

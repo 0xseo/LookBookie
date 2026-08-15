@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import WebView from 'react-native-webview';
 import { Redo2, RotateCcw, Undo2 } from 'lucide-react-native';
 
 import { COLORS } from '../../constants/colors';
+import { AppAlert } from '../components/AppDialog';
 import { readImageAsDataUrl, saveEditedDataUrlImage } from '../storage/imageStorage';
 
 type ImageEraserScreenProps = {
@@ -46,7 +46,7 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
         setCanRedo(false);
         setImageDataUrl(await readImageAsDataUrl(imageUri));
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           '편집기를 열지 못했어북',
           error instanceof Error ? error.message : '이미지를 읽지 못했어요.',
         );
@@ -97,7 +97,7 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
 
     if (message.type === 'error') {
       setIsExporting(false);
-      Alert.alert('편집 오류가 났어북', message.message);
+      AppAlert.alert('편집 오류가 났어북', message.message);
       return;
     }
 
@@ -106,7 +106,7 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
         const editedImageUri = saveEditedDataUrlImage(message.dataUrl);
         onDone(editedImageUri);
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           '편집 저장에 실패했어북',
           error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
         );

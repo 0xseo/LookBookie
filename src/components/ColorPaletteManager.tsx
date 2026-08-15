@@ -1,6 +1,6 @@
 import { Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react-native';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { COLORS } from '../../constants/colors';
 import {
@@ -9,6 +9,7 @@ import {
   inferColorFamilyFromHex,
 } from '../services/colorSearch';
 import { COLOR_OPTIONS, type ColorFamily, type ColorOption } from '../types/clothing';
+import { AppAlert } from './AppDialog';
 import { HsvColorPicker } from './HsvColorPicker';
 import { ReorderHandle } from './ReorderHandle';
 
@@ -80,14 +81,14 @@ export function ColorPaletteManager({
     const label = editingDefault ? editingDefault.label : draftLabel.trim();
 
     if (!label) {
-      Alert.alert('색 이름이 필요해북', '새 색의 이름을 입력해 주세요.');
+      AppAlert.alert('색 이름이 필요해북', '새 색의 이름을 입력해 주세요.');
       return;
     }
 
     if (
       orderedOptions.some((option) => option.label === label && option.label !== editingLabel)
     ) {
-      Alert.alert('이미 있는 색상이어북', '다른 이름을 사용해 주세요.');
+      AppAlert.alert('이미 있는 색상이어북', '다른 이름을 사용해 주세요.');
       return;
     }
 
@@ -114,7 +115,7 @@ export function ColorPaletteManager({
       setOrderedOptions(nextOrderedOptions);
       closeEditor();
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         '팔레트 저장에 실패했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );
@@ -130,7 +131,7 @@ export function ColorPaletteManager({
 
     const isDefault = defaultByLabel.has(editingLabel);
 
-    Alert.alert(
+    AppAlert.alert(
       isDefault ? '기본색으로 되돌릴까북?' : '이 색을 삭제할까북?',
       isDefault ? '처음 설정된 색으로 되돌려요.' : '팔레트에서 삭제해요.',
       [
@@ -188,7 +189,7 @@ export function ColorPaletteManager({
     } catch (error) {
       setOrderedOptions(colorOptions);
       orderRef.current = colorOptions;
-      Alert.alert(
+      AppAlert.alert(
         '순서를 저장하지 못했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );

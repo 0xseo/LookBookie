@@ -7,7 +7,6 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
   Image,
   KeyboardAvoidingView,
@@ -24,6 +23,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
+import { AppAlert } from '../components/AppDialog';
 import { ColorPalettePicker } from '../components/ColorPalettePicker';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { RepresentativeColorExtractor } from '../components/RepresentativeColorExtractor';
@@ -137,7 +137,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permission.granted) {
-        Alert.alert('권한이 필요해북', '사진 보관함 접근을 허용해야 옷 사진을 등록할 수 있어요.');
+        AppAlert.alert('권한이 필요해북', '사진 보관함 접근을 허용해야 옷 사진을 등록할 수 있어요.');
         return;
       }
 
@@ -156,7 +156,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
       const permission = await ImagePicker.requestCameraPermissionsAsync();
 
       if (!permission.granted) {
-        Alert.alert('권한이 필요해북', '카메라 접근을 허용해야 옷 사진을 촬영할 수 있어요.');
+        AppAlert.alert('권한이 필요해북', '카메라 접근을 허용해야 옷 사진을 촬영할 수 있어요.');
         return;
       }
 
@@ -172,7 +172,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
 
     const openImageEditor = () => {
       if (!imageUri) {
-        Alert.alert('사진이 필요해북', '수정할 옷 사진을 먼저 선택해 주세요.');
+        AppAlert.alert('사진이 필요해북', '수정할 옷 사진을 먼저 선택해 주세요.');
         return;
       }
 
@@ -240,7 +240,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
 
     const saveItem = async () => {
       if (!imageUri) {
-        Alert.alert('사진이 필요해북', '등록할 옷 사진을 먼저 선택해 주세요.');
+        AppAlert.alert('사진이 필요해북', '등록할 옷 사진을 먼저 선택해 주세요.');
         return;
       }
 
@@ -268,7 +268,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
 
         onSaved();
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           '저장에 실패했어북',
           error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
         );

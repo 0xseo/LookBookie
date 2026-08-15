@@ -10,7 +10,7 @@ import type {
   NewClothingItem,
   Season,
 } from '../types/clothing';
-import type { LocalBackupImportResult, LocalBackupPayload } from '../types/backup';
+import type { LocalBackupDatabaseImportResult, LocalBackupPayload } from '../types/backup';
 import type { ClothingCloudFields, CloudSyncStatus } from '../types/sync';
 import type { NewOutfit, Outfit, OutfitSticker } from '../types/outfit';
 import { inferColorFamilyFromHex, resolveColorOption } from '../services/colorSearch';
@@ -108,7 +108,7 @@ export async function initDatabase() {
 export async function insertClothingItem(item: NewClothingItem) {
   const db = await getDatabase();
 
-  await db.runAsync(
+  const result = await db.runAsync(
     `INSERT INTO clothes (
       local_image_path,
       remote_image_url,
@@ -140,6 +140,8 @@ export async function insertClothingItem(item: NewClothingItem) {
     item.cloudError ?? null,
     item.syncedAt ?? null,
   );
+
+  return result.lastInsertRowId;
 }
 
 export async function updateClothingItem(item: ClothingItem) {
@@ -365,6 +367,29 @@ export async function countCloudPendingClothingItems() {
   return row?.count ?? 0;
 }
 
+export async function detachAllLocalCloudData() {
+  const db = await getDatabase();
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE clothes
+       SET remote_image_url = NULL,
+           remote_record_id = NULL,
+           storage_path = NULL,
+           cloud_sync_status = 'local',
+           cloud_error = NULL,
+           synced_at = NULL`
+    );
+    await db.runAsync(
+      `UPDATE outfits
+       SET remote_record_id = NULL,
+           cloud_sync_status = 'local',
+           cloud_error = NULL,
+           synced_at = NULL`
+    );
+  });
+}
+
 export async function createLocalBackupPayload(): Promise<LocalBackupPayload> {
   const db = await getDatabase();
   const clothingRows = await db.getAllAsync<ClothingRow>(
@@ -384,13 +409,14 @@ export async function createLocalBackupPayload(): Promise<LocalBackupPayload> {
 
 export async function importLocalBackupPayload(
   payload: LocalBackupPayload,
-): Promise<LocalBackupImportResult> {
+): Promise<LocalBackupDatabaseImportResult> {
   if (payload.version !== 1 || !Array.isArray(payload.clothes) || !Array.isArray(payload.outfits)) {
     throw new Error('지원하지 않는 백업 파일 형식이에요.');
   }
 
   let clothesCount = 0;
   let outfitsCount = 0;
+  const clothingIdMap = new Map<number, number>();
 
   for (const item of payload.clothes) {
     const fallbackImagePath = item.localImagePath || item.remoteImageUrl;
@@ -400,7 +426,7 @@ export async function importLocalBackupPayload(
       continue;
     }
 
-    await insertClothingItem({
+    const insertedId = await insertClothingItem({
       localImagePath: fallbackImagePath,
       remoteImageUrl: item.remoteImageUrl,
       remoteRecordId: item.remoteRecordId,
@@ -416,15 +442,24 @@ export async function importLocalBackupPayload(
       cloudError: null,
       syncedAt: null,
     });
+    clothingIdMap.set(item.id, insertedId);
     clothesCount += 1;
   }
 
   for (const outfit of payload.outfits) {
+    const restoredStickers = outfit.stickers.flatMap((sticker) => {
+      const restoredClothingItemId = clothingIdMap.get(sticker.clothingItemId);
+
+      return restoredClothingItemId === undefined
+        ? []
+        : [{ ...sticker, clothingItemId: restoredClothingItemId }];
+    });
+
     await insertOutfit({
       remoteRecordId: outfit.remoteRecordId ?? null,
       name: outfit.name,
       seasons: outfit.seasons ?? [],
-      stickers: outfit.stickers,
+      stickers: restoredStickers,
       canvasWidth: outfit.canvasWidth,
       canvasHeight: outfit.canvasHeight,
       cloudSyncStatus: outfit.remoteRecordId ? 'pending' : 'local',

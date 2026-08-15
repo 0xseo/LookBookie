@@ -106,13 +106,19 @@ export function WardrobeScreen({
       })
       .sort((left, right) => {
         if (sortOrder === "nameAsc") {
-          return getItemSortName(left).localeCompare(getItemSortName(right), "ko");
+          return getItemSortName(left).localeCompare(
+            getItemSortName(right),
+            "ko"
+          );
         }
 
         const createdDifference =
-          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+          new Date(left.createdAt).getTime() -
+          new Date(right.createdAt).getTime();
 
-        return sortOrder === "createdAsc" ? createdDifference : -createdDifference;
+        return sortOrder === "createdAsc"
+          ? createdDifference
+          : -createdDifference;
       });
   }, [
     colorOptions,
@@ -124,7 +130,8 @@ export function WardrobeScreen({
   ]);
   const activeFilterCount = selectedSeasons.length + selectedColors.length;
   const selectedSortLabel =
-    SORT_OPTIONS.find((option) => option.value === sortOrder)?.label ?? "최신순";
+    SORT_OPTIONS.find((option) => option.value === sortOrder)?.label ??
+    "최신순";
 
   const toggleSeason = (season: Season) => {
     setSelectedSeasons((current) =>
@@ -179,7 +186,9 @@ export function WardrobeScreen({
 
         <View style={styles.toolbar}>
           <Pressable
-            onPress={() => setToolbarPanel((current) => (current === "sort" ? null : "sort"))}
+            onPress={() =>
+              setToolbarPanel((current) => (current === "sort" ? null : "sort"))
+            }
             style={[
               styles.toolbarButton,
               toolbarPanel === "sort" && styles.toolbarButtonActive,
@@ -191,7 +200,9 @@ export function WardrobeScreen({
           </Pressable>
           <Pressable
             onPress={() =>
-              setToolbarPanel((current) => (current === "filter" ? null : "filter"))
+              setToolbarPanel((current) =>
+                current === "filter" ? null : "filter"
+              )
             }
             style={[
               styles.toolbarButton,
@@ -200,7 +211,11 @@ export function WardrobeScreen({
             ]}
             hitSlop={8}
           >
-            <SlidersHorizontal color={COLORS.primary} size={18} strokeWidth={2.2} />
+            <SlidersHorizontal
+              color={COLORS.primary}
+              size={18}
+              strokeWidth={2.2}
+            />
             <Text style={styles.toolbarButtonText}>필터</Text>
             {activeFilterCount > 0 ? (
               <View style={styles.filterCountBadge}>
@@ -225,7 +240,10 @@ export function WardrobeScreen({
                       setSortOrder(option.value);
                       setToolbarPanel(null);
                     }}
-                    style={[styles.sortOption, selected && styles.sortOptionSelected]}
+                    style={[
+                      styles.sortOption,
+                      selected && styles.sortOptionSelected,
+                    ]}
                     hitSlop={8}
                   >
                     <Icon
@@ -233,7 +251,12 @@ export function WardrobeScreen({
                       size={18}
                       strokeWidth={2.2}
                     />
-                    <Text style={[styles.sortOptionText, selected && styles.sortOptionTextSelected]}>
+                    <Text
+                      style={[
+                        styles.sortOptionText,
+                        selected && styles.sortOptionTextSelected,
+                      ]}
+                    >
                       {option.label}
                     </Text>
                   </Pressable>
@@ -248,8 +271,16 @@ export function WardrobeScreen({
             <View style={styles.controlHeadingRow}>
               <Text style={styles.controlTitle}>필터</Text>
               {activeFilterCount > 0 ? (
-                <Pressable onPress={resetFilters} style={styles.resetButton} hitSlop={8}>
-                  <RotateCcw color={COLORS.textSecondary} size={16} strokeWidth={2.2} />
+                <Pressable
+                  onPress={resetFilters}
+                  style={styles.resetButton}
+                  hitSlop={8}
+                >
+                  <RotateCcw
+                    color={COLORS.textSecondary}
+                    size={16}
+                    strokeWidth={2.2}
+                  />
                   <Text style={styles.resetButtonText}>초기화</Text>
                 </Pressable>
               ) : null}
@@ -263,10 +294,18 @@ export function WardrobeScreen({
                   <Pressable
                     key={season}
                     onPress={() => toggleSeason(season)}
-                    style={[styles.filterChip, selected && styles.filterChipSelected]}
+                    style={[
+                      styles.filterChip,
+                      selected && styles.filterChipSelected,
+                    ]}
                     hitSlop={8}
                   >
-                    <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        selected && styles.filterChipTextSelected,
+                      ]}
+                    >
                       {season}
                     </Text>
                   </Pressable>
@@ -282,14 +321,26 @@ export function WardrobeScreen({
                   <Pressable
                     key={option.label}
                     onPress={() => toggleColor(option.label)}
-                    style={[styles.colorFilterButton, selected && styles.colorFilterButtonSelected]}
+                    style={[
+                      styles.colorFilterButton,
+                      selected && styles.colorFilterButtonSelected,
+                    ]}
                     accessibilityLabel={option.label}
                     accessibilityState={{ selected }}
                     hitSlop={6}
                   >
-                    <View style={[styles.colorFilterSwatch, { backgroundColor: option.value }]}>
+                    <View
+                      style={[
+                        styles.colorFilterSwatch,
+                        { backgroundColor: option.value },
+                      ]}
+                    >
                       {selected ? (
-                        <Check color={COLORS.primary} size={16} strokeWidth={3} />
+                        <Check
+                          color={COLORS.primary}
+                          size={16}
+                          strokeWidth={3}
+                        />
                       ) : null}
                     </View>
                   </Pressable>
@@ -391,30 +442,26 @@ export function WardrobeScreen({
   );
 }
 
-function SyncStatusBadge({ status }: { status: ClothingItem["cloudSyncStatus"] }) {
-  const Icon = status === "synced" ? CloudCheck : status === "failed" ? CloudAlert : null;
+function SyncStatusBadge({
+  status,
+}: {
+  status: ClothingItem["cloudSyncStatus"];
+}) {
+  const isSynced = status === "synced";
+  const Icon = isSynced ? CloudCheck : CloudAlert;
 
   return (
-    <View style={[styles.syncPill, getSyncPillStyle(status)]}>
-      {Icon ? (
-        <Icon color={COLORS.surface} size={17} strokeWidth={2.6} />
-      ) : (
-        <Text style={styles.syncText}>{getSyncText(status)}</Text>
-      )}
+    <View
+      style={[styles.syncPill, getSyncPillStyle(status)]}
+      accessibilityLabel={isSynced ? "클라우드 동기화 완료" : "클라우드 동기화 필요"}
+    >
+      <Icon color={COLORS.surface} size={17} strokeWidth={2.6} />
     </View>
   );
 }
 
 function getItemSortName(item: ClothingItem) {
   return (item.name || item.brand || item.category).trim();
-}
-
-function getSyncText(status: ClothingItem["cloudSyncStatus"]) {
-  if (status === "pending") {
-    return "⇧";
-  }
-
-  return "•";
 }
 
 function getSyncPillStyle(status: ClothingItem["cloudSyncStatus"]) {
@@ -439,7 +486,7 @@ function EmptyWardrobe() {
       <Text style={styles.emptyMascot}>🐢</Text>
       <View style={styles.speechBubble}>
         <Text style={styles.emptyText}>
-          아직 옷장이 비어있어북! 첫 옷을 등록해봐북 🐢
+          {"아직 옷장이 비어있어북! \n첫 옷을 등록해봐북 🐢"}
         </Text>
       </View>
     </View>
@@ -754,11 +801,6 @@ const styles = StyleSheet.create({
   },
   syncPillLocal: {
     backgroundColor: COLORS.textSecondary,
-  },
-  syncText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: COLORS.surface,
   },
   brandRow: {
     minHeight: 38,

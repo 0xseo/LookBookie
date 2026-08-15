@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Image,
   PanResponder,
@@ -15,6 +14,7 @@ import Slider from '@react-native-community/slider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
+import { AppAlert } from '../components/AppDialog';
 import { cropWardrobeImageToRect, type CropMode, type CropRect } from '../storage/imageStorage';
 
 type ImageCropScreenProps = {
@@ -82,7 +82,7 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
         pan.setValue({ x: 0, y: 0 });
       },
       () => {
-        Alert.alert('이미지를 읽지 못했어북', '크롭할 이미지 정보를 불러오지 못했어요.');
+        AppAlert.alert('이미지를 읽지 못했어북', '크롭할 이미지 정보를 불러오지 못했어요.');
       },
     );
   }, [imageUri, pan]);
@@ -182,7 +182,7 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
       const croppedImage = await cropWardrobeImageToRect(imageUri, cropRect);
       onDone(croppedImage.uri);
     } catch (error) {
-      Alert.alert(
+      AppAlert.alert(
         '이미지 자르기에 실패했어북',
         error instanceof Error ? error.message : '알 수 없는 오류가 발생했어요.',
       );
