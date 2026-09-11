@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { Image } from 'react-native';
 
 const WARDROBE_IMAGE_DIRECTORY = 'lookboogie-clothes';
 const EDITED_IMAGE_DIRECTORY = 'lookboogie-edits';
@@ -120,6 +121,27 @@ export async function cropWardrobeImageToRect(sourceUri: string, rect: CropRect)
   };
 }
 
+export async function rotateAndCropWardrobeImageToRect(
+  sourceUri: string,
+  rotation: number,
+  rect: CropRect,
+) {
+  const normalizedRotation = ((Math.round(rotation) % 360) + 360) % 360;
+
+  if (normalizedRotation === 0) {
+    return cropWardrobeImageToRect(sourceUri, rect);
+  }
+
+  const rotatedContext = ImageManipulator.manipulate(sourceUri).rotate(normalizedRotation);
+  const rotatedRender = await rotatedContext.renderAsync();
+  const rotatedImage = await rotatedRender.saveAsync({
+    format: SaveFormat.PNG,
+    compress: 1,
+  });
+
+  return cropWardrobeImageToRect(rotatedImage.uri, rect);
+}
+
 export async function saveWardrobeImage(sourceUri: string) {
   const imageDirectory = new Directory(Paths.document, WARDROBE_IMAGE_DIRECTORY);
   imageDirectory.create({ idempotent: true, intermediates: true });
@@ -173,11 +195,37 @@ export async function restoreWardrobeImageFromBackup(
 }
 
 export async function readImageAsDataUrl(sourceUri: string) {
-  const sourceFile = new File(sourceUri);
-  const extension = getFileExtension(sourceUri);
+  const probe = await getImageSize(sourceUri);
+  const context = ImageManipulator.manipulate(sourceUri);
+  const maxSide = 1600;
+
+  if (Math.max(probe.width, probe.height) > maxSide) {
+    if (probe.width >= probe.height) {
+      context.resize({ width: maxSide });
+    } else {
+      context.resize({ height: maxSide });
+    }
+  }
+
+  const renderedImage = await context.renderAsync();
+  const preparedImage = await renderedImage.saveAsync({
+    format: SaveFormat.PNG,
+    compress: 1,
+  });
+  const sourceFile = new File(preparedImage.uri);
   const base64 = await sourceFile.base64();
 
-  return `data:${getContentType(extension)};base64,${base64}`;
+  return `data:image/png;base64,${base64}`;
+}
+
+function getImageSize(sourceUri: string) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    Image.getSize(
+      sourceUri,
+      (width, height) => resolve({ width, height }),
+      (error) => reject(error),
+    );
+  });
 }
 
 export function saveEditedDataUrlImage(dataUrl: string) {

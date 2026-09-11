@@ -24,9 +24,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
 import { AppAlert } from '../components/AppDialog';
+import { BrandAutocomplete } from '../components/BrandAutocomplete';
 import { ColorPalettePicker } from '../components/ColorPalettePicker';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { RepresentativeColorExtractor } from '../components/RepresentativeColorExtractor';
+import { TagInput } from '../components/TagInput';
 import { ImageCropScreen } from './ImageCropScreen';
 import { ImageEraserScreen } from './ImageEraserScreen';
 import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage';
@@ -46,6 +48,7 @@ import {
 } from '../types/clothing';
 
 type AddItemScreenProps = {
+  brandSuggestions: string[];
   onCancel: () => void;
   onSaved: () => void;
 };
@@ -55,12 +58,13 @@ export type AddItemScreenHandle = {
 };
 
 export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>(
-  function AddItemScreen({ onCancel, onSaved }, ref) {
+  function AddItemScreen({ brandSuggestions, onCancel, onSaved }, ref) {
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
     const [eraserSourceUri, setEraserSourceUri] = useState<string | null>(null);
     const [name, setName] = useState('');
     const [brand, setBrand] = useState('');
+    const [tags, setTags] = useState<string[]>([]);
     const [category, setCategory] = useState<ClothingCategory>('상의');
     const [seasons, setSeasons] = useState<Season[]>([]);
     const [color, setColor] = useState<ClothingColor>('블랙');
@@ -81,6 +85,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     const hasDraft =
       Boolean(imageUri || cropSourceUri || eraserSourceUri || brand.trim()) ||
       name.trim().length > 0 ||
+      tags.length > 0 ||
       seasons.length > 0 ||
       category !== categoryOptions[0] ||
       color !== '블랙';
@@ -254,6 +259,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
           localImagePath,
           name: name.trim(),
           brand: brand.trim(),
+          tags,
           category,
           seasons,
           color,
@@ -352,14 +358,16 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
 
             <View style={styles.formGroup}>
               <Text style={styles.label}>브랜드</Text>
-              <TextInput
+              <BrandAutocomplete
                 value={brand}
+                suggestions={brandSuggestions}
                 onChangeText={setBrand}
-                placeholder="브랜드명을 입력해 주세요"
-                placeholderTextColor={COLORS.textSecondary}
-                style={styles.input}
-                returnKeyType="done"
               />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>태그</Text>
+              <TagInput tags={tags} onChange={setTags} placeholder="예: 출근룩, 빈티지" />
             </View>
 
             <View style={styles.formGroup}>

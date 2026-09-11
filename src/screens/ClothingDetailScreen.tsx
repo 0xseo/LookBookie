@@ -17,11 +17,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
 import { AppAlert } from '../components/AppDialog';
+import { BrandAutocomplete } from '../components/BrandAutocomplete';
 import { ColorPalettePicker } from '../components/ColorPalettePicker';
 import { RepresentativeColorExtractor } from '../components/RepresentativeColorExtractor';
+import { TagInput } from '../components/TagInput';
 import { ImageCropScreen } from './ImageCropScreen';
 import { ImageEraserScreen } from './ImageEraserScreen';
-import { deleteClothingItem, updateClothingItem } from '../storage/database';
+import {
+  deleteClothingItem,
+  listOutfitsContainingClothingItem,
+  updateClothingItem,
+} from '../storage/database';
 import { processWardrobeImage, saveWardrobeImage } from '../storage/imageStorage';
 import {
   deleteClothingItemFromCloud,
@@ -39,19 +45,24 @@ import {
   type ClothingItem,
   type Season,
 } from '../types/clothing';
+import type { Outfit } from '../types/outfit';
 
 type ClothingDetailScreenProps = {
   item: ClothingItem;
+  brandSuggestions: string[];
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
+  onOpenOutfit: (outfitId: number) => void;
 };
 
 export function ClothingDetailScreen({
   item,
+  brandSuggestions,
   onClose,
   onSaved,
   onDeleted,
+  onOpenOutfit,
 }: ClothingDetailScreenProps) {
   const [imageUri, setImageUri] = useState(item.localImagePath);
   const [imageChanged, setImageChanged] = useState(false);
@@ -59,6 +70,7 @@ export function ClothingDetailScreen({
   const [eraserSourceUri, setEraserSourceUri] = useState<string | null>(null);
   const [name, setName] = useState(item.name);
   const [brand, setBrand] = useState(item.brand);
+  const [tags, setTags] = useState(item.tags);
   const [category, setCategory] = useState<ClothingCategory>(item.category);
   const [seasons, setSeasons] = useState<Season[]>(item.seasons);
   const [color, setColor] = useState<ClothingColor>(item.color);
@@ -72,6 +84,7 @@ export function ClothingDetailScreen({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCropVisible, setIsCropVisible] = useState(false);
   const [isEraserVisible, setIsEraserVisible] = useState(false);
+  const [containingOutfits, setContainingOutfits] = useState<Outfit[]>([]);
   const { colorOptions } = useColorPaletteOptions();
   const { categoryOptions } = useCategoryOptions();
   const keyboardHeight = useKeyboardHeight();
@@ -79,11 +92,18 @@ export function ClothingDetailScreen({
     imageUri !== item.localImagePath ||
     name !== item.name ||
     brand !== item.brand ||
+    tags.join('|') !== item.tags.join('|') ||
     category !== item.category ||
     color !== item.color ||
     colorValue !== item.colorValue ||
     colorFamily !== item.colorFamily ||
     seasons.join('|') !== item.seasons.join('|');
+
+  useEffect(() => {
+    void listOutfitsContainingClothingItem(item.id)
+      .then(setContainingOutfits)
+      .catch(() => setContainingOutfits([]));
+  }, [item.id]);
 
   const selectColorOption = (nextColor: ClothingColor, option: ColorOption) => {
     setColor(nextColor);
@@ -193,6 +213,7 @@ export function ClothingDetailScreen({
         localImagePath: nextLocalImagePath,
         name: name.trim(),
         brand: brand.trim(),
+        tags,
         category,
         seasons,
         color,
@@ -321,14 +342,16 @@ export function ClothingDetailScreen({
 
           <View style={styles.formGroup}>
             <Text style={styles.label}>브랜드</Text>
-            <TextInput
+            <BrandAutocomplete
               value={brand}
+              suggestions={brandSuggestions}
               onChangeText={setBrand}
-              placeholder="브랜드명을 입력해 주세요"
-              placeholderTextColor={COLORS.textSecondary}
-              style={styles.input}
-              returnKeyType="done"
             />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>태그</Text>
+            <TagInput tags={tags} onChange={setTags} placeholder="예: 출근룩, 빈티지" />
           </View>
 
           <View style={styles.formGroup}>
@@ -343,6 +366,41 @@ export function ClothingDetailScreen({
                 />
               ))}
             </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>이 옷이 들어간 코디북</Text>
+            {containingOutfits.length > 0 ? (
+              <View style={styles.relatedOutfits}>
+                {containingOutfits.map((outfit) => (
+                  <Pressable
+                    key={outfit.id}
+                    onPress={() => onOpenOutfit(outfit.id)}
+                    style={styles.relatedOutfitRow}
+                    hitSlop={8}
+                  >
+                    <View style={styles.relatedOutfitThumb}>
+                      {outfit.stickers[0]?.localImagePath ? (
+                        <Image
+                          source={{ uri: outfit.stickers[0].localImagePath }}
+                          style={styles.relatedOutfitImage}
+                        />
+                      ) : null}
+                    </View>
+                    <View style={styles.relatedOutfitText}>
+                      <Text style={styles.relatedOutfitName} numberOfLines={1}>
+                        {outfit.name}
+                      </Text>
+                      <Text style={styles.relatedOutfitMeta} numberOfLines={1}>
+                        {[...outfit.seasons, ...outfit.tags.map((tag) => `#${tag}`)].join(' · ') || '코디 정보 없음'}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyRelationText}>아직 이 옷을 사용한 코디가 없어북</Text>
+            )}
           </View>
 
           <View style={styles.formGroup}>
@@ -605,6 +663,30 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.surface,
   },
+  relatedOutfits: { gap: 8 },
+  relatedOutfitRow: {
+    minHeight: 64,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  relatedOutfitThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: COLORS.background,
+  },
+  relatedOutfitImage: { width: '100%', height: '100%', resizeMode: 'contain' },
+  relatedOutfitText: { flex: 1 },
+  relatedOutfitName: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
+  relatedOutfitMeta: { marginTop: 4, fontSize: 12, color: COLORS.textSecondary },
+  emptyRelationText: { fontSize: 13, color: COLORS.textSecondary },
   mutedButton: {
     opacity: 0.45,
   },

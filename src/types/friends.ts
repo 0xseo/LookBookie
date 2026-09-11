@@ -24,6 +24,7 @@ export type FriendWardrobeItem = {
   remoteImageUrl: string;
   name: string | null;
   brand: string | null;
+  tags: string[];
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;
@@ -52,6 +53,7 @@ export type FriendOutfit = {
   ownerId: string;
   name: string;
   seasons: Season[];
+  tags: string[];
   stickers: FriendOutfitSticker[];
   canvasWidth: number | null;
   canvasHeight: number | null;

@@ -1,10 +1,14 @@
-import type { Season } from './clothing';
+import type { ClothingCategory, Season } from './clothing';
 import type { CloudSyncStatus } from './sync';
 
 export type OutfitSticker = {
   id: string;
   clothingItemId: number;
   localImagePath: string;
+  remoteImageUrl: string | null;
+  name: string;
+  brand: string;
+  category: ClothingCategory | null;
   x: number;
   y: number;
   size: number;
@@ -17,6 +21,7 @@ export type Outfit = {
   remoteRecordId: string | null;
   name: string;
   seasons: Season[];
+  tags: string[];
   stickers: OutfitSticker[];
   canvasWidth: number | null;
   canvasHeight: number | null;
@@ -30,6 +35,7 @@ export type NewOutfit = {
   remoteRecordId?: string | null;
   name: string;
   seasons: Season[];
+  tags: string[];
   stickers: OutfitSticker[];
   canvasWidth?: number | null;
   canvasHeight?: number | null;

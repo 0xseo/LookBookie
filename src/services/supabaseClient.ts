@@ -18,6 +18,7 @@ type LookBoogieDatabase = {
           storage_path: string;
           name: string | null;
           brand: string | null;
+          tags: string[];
           category: ClothingCategory;
           seasons: Season[];
           color: ClothingColor;
@@ -31,6 +32,7 @@ type LookBoogieDatabase = {
           storage_path: string;
           name?: string | null;
           brand?: string | null;
+          tags?: string[];
           category: ClothingCategory;
           seasons: Season[];
           color: ClothingColor;
@@ -42,6 +44,7 @@ type LookBoogieDatabase = {
           storage_path?: string;
           name?: string | null;
           brand?: string | null;
+          tags?: string[];
           category?: ClothingCategory;
           seasons?: Season[];
           color?: ClothingColor;
@@ -100,6 +103,7 @@ type LookBoogieDatabase = {
           owner_id: string;
           name: string;
           seasons: Season[];
+          tags: string[];
           stickers: unknown;
           canvas_width: number | null;
           canvas_height: number | null;
@@ -109,6 +113,7 @@ type LookBoogieDatabase = {
           owner_id: string;
           name: string;
           seasons?: Season[];
+          tags?: string[];
           stickers: unknown;
           canvas_width?: number | null;
           canvas_height?: number | null;
@@ -116,6 +121,7 @@ type LookBoogieDatabase = {
         Update: {
           name?: string;
           seasons?: Season[];
+          tags?: string[];
           stickers?: unknown;
           canvas_width?: number | null;
           canvas_height?: number | null;

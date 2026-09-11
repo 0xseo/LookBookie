@@ -25,6 +25,7 @@ type ClothingRow = {
   storage_path: string | null;
   name: string | null;
   brand: string | null;
+  tags: string | null;
   category: ClothingCategory;
   seasons: string | null;
   color: ClothingColor;
@@ -41,6 +42,7 @@ type OutfitRow = {
   remote_record_id: string | null;
   name: string;
   seasons: string | null;
+  tags: string | null;
   stickers: string;
   canvas_width: number | null;
   canvas_height: number | null;
@@ -91,6 +93,7 @@ export async function initDatabase() {
   await ensureColumn(db, 'clothes', 'remote_record_id', 'TEXT');
   await ensureColumn(db, 'clothes', 'storage_path', 'TEXT');
   await ensureColumn(db, 'clothes', 'name', 'TEXT');
+  await ensureColumn(db, 'clothes', 'tags', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, 'clothes', 'color_value', 'TEXT');
   await ensureColumn(db, 'clothes', 'color_family', 'TEXT');
   await ensureColumn(db, 'clothes', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
@@ -99,6 +102,7 @@ export async function initDatabase() {
   await ensureColumn(db, 'outfits', 'canvas_width', 'REAL');
   await ensureColumn(db, 'outfits', 'canvas_height', 'REAL');
   await ensureColumn(db, 'outfits', 'seasons', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, 'outfits', 'tags', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, 'outfits', 'remote_record_id', 'TEXT');
   await ensureColumn(db, 'outfits', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
   await ensureColumn(db, 'outfits', 'cloud_error', 'TEXT');
@@ -116,6 +120,7 @@ export async function insertClothingItem(item: NewClothingItem) {
       storage_path,
 	      name,
 	      brand,
+	      tags,
 	      category,
 	      seasons,
 	      color,
@@ -124,13 +129,14 @@ export async function insertClothingItem(item: NewClothingItem) {
 	      cloud_sync_status,
 	      cloud_error,
 	      synced_at
-	    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     item.localImagePath,
     item.remoteImageUrl ?? null,
     item.remoteRecordId ?? null,
     item.storagePath ?? null,
     item.name.trim(),
     item.brand.trim(),
+    JSON.stringify(item.tags),
     item.category,
     JSON.stringify(item.seasons),
     item.color,
@@ -155,6 +161,7 @@ export async function updateClothingItem(item: ClothingItem) {
 	         storage_path = ?,
 	         name = ?,
 	         brand = ?,
+	         tags = ?,
 	         category = ?,
 	         seasons = ?,
 	         color = ?,
@@ -170,6 +177,7 @@ export async function updateClothingItem(item: ClothingItem) {
     item.storagePath,
     item.name.trim(),
     item.brand.trim(),
+    JSON.stringify(item.tags),
     item.category,
     JSON.stringify(item.seasons),
     item.color,
@@ -236,16 +244,18 @@ export async function insertOutfit(outfit: NewOutfit) {
       remote_record_id,
       name,
       seasons,
+      tags,
       stickers,
       canvas_width,
       canvas_height,
       cloud_sync_status,
       cloud_error,
       synced_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     outfit.remoteRecordId ?? null,
     outfit.name,
     JSON.stringify(outfit.seasons),
+    JSON.stringify(outfit.tags),
     JSON.stringify(outfit.stickers),
     outfit.canvasWidth ?? null,
     outfit.canvasHeight ?? null,
@@ -265,6 +275,7 @@ export async function updateOutfit(outfit: Outfit) {
      SET remote_record_id = ?,
          name = ?,
          seasons = ?,
+         tags = ?,
          stickers = ?,
          canvas_width = ?,
          canvas_height = ?,
@@ -275,6 +286,7 @@ export async function updateOutfit(outfit: Outfit) {
     outfit.remoteRecordId,
     outfit.name,
     JSON.stringify(outfit.seasons),
+    JSON.stringify(outfit.tags),
     JSON.stringify(outfit.stickers),
     outfit.canvasWidth ?? null,
     outfit.canvasHeight ?? null,
@@ -336,6 +348,14 @@ export async function listOutfits() {
   );
 
   return rows.map(mapOutfitRow);
+}
+
+export async function listOutfitsContainingClothingItem(clothingItemId: number) {
+  const outfits = await listOutfits();
+
+  return outfits.filter((outfit) =>
+    outfit.stickers.some((sticker) => sticker.clothingItemId === clothingItemId),
+  );
 }
 
 export async function countOutfits() {
@@ -433,6 +453,7 @@ export async function importLocalBackupPayload(
       storagePath: item.storagePath,
       name: item.name,
       brand: item.brand,
+      tags: item.tags ?? [],
       category: item.category,
       seasons: item.seasons,
       color: item.color,
@@ -450,15 +471,18 @@ export async function importLocalBackupPayload(
     const restoredStickers = outfit.stickers.flatMap((sticker) => {
       const restoredClothingItemId = clothingIdMap.get(sticker.clothingItemId);
 
-      return restoredClothingItemId === undefined
-        ? []
-        : [{ ...sticker, clothingItemId: restoredClothingItemId }];
+      return [{
+        ...sticker,
+        clothingItemId:
+          restoredClothingItemId ?? -Math.max(1, Math.abs(sticker.clothingItemId)),
+      }];
     });
 
     await insertOutfit({
       remoteRecordId: outfit.remoteRecordId ?? null,
       name: outfit.name,
       seasons: outfit.seasons ?? [],
+      tags: outfit.tags ?? [],
       stickers: restoredStickers,
       canvasWidth: outfit.canvasWidth,
       canvasHeight: outfit.canvasHeight,
@@ -510,6 +534,7 @@ function mapClothingRow(row: ClothingRow): ClothingItem {
     storagePath: row.storage_path ?? null,
     name: row.name ?? row.brand ?? '',
     brand: row.brand ?? '',
+    tags: parseStringArray(row.tags),
     category: row.category,
     seasons: parseSeasons(row.seasons),
     color: row.color,
@@ -542,6 +567,7 @@ function mapOutfitRow(row: OutfitRow): Outfit {
     remoteRecordId: row.remote_record_id ?? null,
     name: row.name,
     seasons: parseSeasons(row.seasons),
+    tags: parseStringArray(row.tags),
     stickers: parseStickers(row.stickers),
     canvasWidth: row.canvas_width ?? null,
     canvasHeight: row.canvas_height ?? null,
@@ -552,11 +578,37 @@ function mapOutfitRow(row: OutfitRow): Outfit {
   };
 }
 
+function parseStringArray(value: string | null) {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function parseStickers(value: string): OutfitSticker[] {
   try {
     const parsed = JSON.parse(value);
 
-    return Array.isArray(parsed) ? (parsed as OutfitSticker[]) : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map((sticker) => ({
+      ...sticker,
+      remoteImageUrl:
+        typeof sticker.remoteImageUrl === 'string' ? sticker.remoteImageUrl : null,
+      name: typeof sticker.name === 'string' ? sticker.name : '',
+      brand: typeof sticker.brand === 'string' ? sticker.brand : '',
+      category: typeof sticker.category === 'string' ? sticker.category : null,
+    })) as OutfitSticker[];
   } catch {
     return [];
   }

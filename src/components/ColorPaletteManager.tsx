@@ -41,7 +41,12 @@ export function ColorPaletteManager({
     () => new Map<string, ColorOption>(COLOR_OPTIONS.map((option) => [option.label, option])),
     [],
   );
-  const editingDefault = editingLabel ? defaultByLabel.get(editingLabel) : undefined;
+  const editingOption = editingLabel
+    ? orderedOptions.find((option) => option.label === editingLabel)
+    : undefined;
+  const editingDefault = editingOption
+    ? defaultByLabel.get(editingOption.baseLabel ?? editingOption.label)
+    : undefined;
   const editorVisible = isAdding || Boolean(editingLabel);
 
   useEffect(() => {
@@ -78,7 +83,7 @@ export function ColorPaletteManager({
   };
 
   const saveColor = async () => {
-    const label = editingDefault ? editingDefault.label : draftLabel.trim();
+    const label = draftLabel.trim();
 
     if (!label) {
       AppAlert.alert('색 이름이 필요해북', '새 색의 이름을 입력해 주세요.');
@@ -97,9 +102,14 @@ export function ColorPaletteManager({
       value: draftValue,
       family: draftFamily,
       aliases: editingDefault?.aliases,
+      baseLabel: editingDefault?.label,
     };
     const nextCustomOptions = [
-      ...customColorOptions.filter((option) => option.label !== editingLabel),
+      ...customColorOptions.filter(
+        (option) =>
+          option.label !== editingLabel &&
+          (!editingDefault || option.baseLabel !== editingDefault.label),
+      ),
       nextOption,
     ];
     const nextOrderedOptions = editingLabel
@@ -129,7 +139,7 @@ export function ColorPaletteManager({
       return;
     }
 
-    const isDefault = defaultByLabel.has(editingLabel);
+    const isDefault = Boolean(editingDefault);
 
     AppAlert.alert(
       isDefault ? '기본색으로 되돌릴까북?' : '이 색을 삭제할까북?',
@@ -141,12 +151,14 @@ export function ColorPaletteManager({
           style: isDefault ? 'default' : 'destructive',
           onPress: async () => {
             const nextCustomOptions = customColorOptions.filter(
-              (option) => option.label !== editingLabel,
+              (option) =>
+                option.label !== editingLabel &&
+                (!editingDefault || option.baseLabel !== editingDefault.label),
             );
             const nextOrderedOptions = isDefault
               ? orderedOptions.map((option) =>
                   option.label === editingLabel
-                    ? (defaultByLabel.get(editingLabel) ?? option)
+                    ? (editingDefault ?? option)
                     : option,
                 )
               : orderedOptions.filter((option) => option.label !== editingLabel);
@@ -199,18 +211,14 @@ export function ColorPaletteManager({
   const renderEditor = (title: string) => (
     <View style={styles.editor}>
       <Text style={styles.editorTitle}>{title}</Text>
-      {editingDefault ? (
-        <Text style={styles.fixedName}>{editingDefault.label}</Text>
-      ) : (
-        <TextInput
-          value={draftLabel}
-          onChangeText={setDraftLabel}
-          placeholder="색 이름"
-          placeholderTextColor={COLORS.textSecondary}
-          style={styles.input}
-          returnKeyType="done"
-        />
-      )}
+      <TextInput
+        value={draftLabel}
+        onChangeText={setDraftLabel}
+        placeholder="색 이름"
+        placeholderTextColor={COLORS.textSecondary}
+        style={styles.input}
+        returnKeyType="done"
+      />
 
       <HsvColorPicker value={draftValue} onChange={updatePickerColor} />
 
@@ -262,7 +270,9 @@ export function ColorPaletteManager({
     <View style={styles.container}>
       <View style={styles.paletteList}>
         {orderedOptions.map((option, index) => {
-          const overridden = customColorOptions.some((saved) => saved.label === option.label);
+          const overridden = customColorOptions.some(
+            (saved) => saved.label === option.label || saved.baseLabel === option.baseLabel,
+          );
 
           return (
             <Fragment key={option.label}>
@@ -277,7 +287,7 @@ export function ColorPaletteManager({
                     <Text style={styles.paletteName}>{option.label}</Text>
                     <Text style={styles.paletteMeta}>
                       {getColorFamilyLabel(option.family)} · {option.value}
-                      {overridden && defaultByLabel.has(option.label) ? ' · 수정됨' : ''}
+                      {overridden && option.baseLabel ? ' · 수정됨' : ''}
                     </Text>
                   </View>
                   <Pencil color={COLORS.textSecondary} size={18} strokeWidth={2} />

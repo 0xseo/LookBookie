@@ -15,7 +15,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
 import { AppAlert } from '../components/AppDialog';
-import { cropWardrobeImageToRect, type CropMode, type CropRect } from '../storage/imageStorage';
+import {
+  rotateAndCropWardrobeImageToRect,
+  type CropMode,
+  type CropRect,
+} from '../storage/imageStorage';
 
 type ImageCropScreenProps = {
   imageUri: string;
@@ -46,11 +50,16 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
   const [selectedMode, setSelectedMode] = useState<CropMode>('original');
   const [imageSize, setImageSize] = useState<ImageSize | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
   const [isCropping, setIsCropping] = useState(false);
-  const selectedRatio = getCropRatio(selectedMode, imageSize);
+  const rotatedImageSize = useMemo(
+    () => imageSize ? getRotatedBoundingSize(imageSize, rotation) : null,
+    [imageSize, rotation],
+  );
+  const selectedRatio = getCropRatio(selectedMode, rotatedImageSize);
   const cropFrame = useMemo(() => {
     const maxWidth = width - 32;
-    const maxHeight = height - 248;
+    const maxHeight = height - 304;
     let frameWidth = maxWidth;
     let frameHeight = frameWidth / selectedRatio;
 
@@ -65,11 +74,14 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
     };
   }, [height, selectedRatio, width]);
   const baseScale = imageSize
-    ? Math.max(cropFrame.width / imageSize.width, cropFrame.height / imageSize.height)
+    ? getRotatedCoverScale(imageSize, cropFrame, rotation)
     : 1;
-  const displaySize = imageSize
-    ? getDisplaySize(imageSize, baseScale, zoom)
+  const displaySize = rotatedImageSize
+    ? getDisplaySize(rotatedImageSize, baseScale, zoom)
     : { width: cropFrame.width, height: cropFrame.height };
+  const sourceDisplaySize = imageSize
+    ? getDisplaySize(imageSize, baseScale, zoom)
+    : displaySize;
 
   useEffect(() => {
     Image.getSize(
@@ -106,7 +118,7 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
         onPanResponderMove: (event, gesture) => {
           const touches = event.nativeEvent.touches;
 
-          if (touches.length >= 2 && imageSize) {
+          if (touches.length >= 2 && rotatedImageSize) {
             const nextDistance = getTouchDistance(touches[0], touches[1]);
 
             if (!pinchStartDistance.current) {
@@ -119,7 +131,7 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
               1,
               3,
             );
-            const nextDisplaySize = getDisplaySize(imageSize, baseScale, nextZoom);
+            const nextDisplaySize = getDisplaySize(rotatedImageSize, baseScale, nextZoom);
             const nextPan = constrainPan(latestPan.current, cropFrame, nextDisplaySize);
 
             latestZoom.current = nextZoom;
@@ -155,7 +167,7 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
           pan.setValue(nextPan);
         },
       }),
-    [baseScale, cropFrame, displaySize, imageSize, pan],
+    [baseScale, cropFrame, displaySize, pan, rotatedImageSize],
   );
 
   const updateZoom = (nextZoom: number) => {
@@ -171,15 +183,23 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
     setIsCropping(true);
 
     try {
+      if (!rotatedImageSize) {
+        return;
+      }
+
       const cropRect = getCropRect({
-        imageSize,
+        imageSize: rotatedImageSize,
         cropFrame,
         displaySize,
         pan: latestPan.current,
         baseScale,
         zoom,
       });
-      const croppedImage = await cropWardrobeImageToRect(imageUri, cropRect);
+      const croppedImage = await rotateAndCropWardrobeImageToRect(
+        imageUri,
+        rotation,
+        cropRect,
+      );
       onDone(croppedImage.uri);
     } catch (error) {
       AppAlert.alert(
@@ -224,8 +244,7 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
             ]}
             {...panResponder.panHandlers}
           >
-            <Animated.Image
-              source={{ uri: imageUri }}
+            <Animated.View
               style={[
                 styles.cropPreview,
                 {
@@ -236,7 +255,21 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
                   transform: [{ translateX: pan.x }, { translateY: pan.y }],
                 },
               ]}
-            />
+            >
+              <Image
+                source={{ uri: imageUri }}
+                style={[
+                  styles.rotatingImage,
+                  {
+                    width: sourceDisplaySize.width,
+                    height: sourceDisplaySize.height,
+                    left: (displaySize.width - sourceDisplaySize.width) / 2,
+                    top: (displaySize.height - sourceDisplaySize.height) / 2,
+                    transform: [{ rotate: `${rotation}deg` }],
+                  },
+                ]}
+              />
+            </Animated.View>
             <View pointerEvents="none" style={styles.cropGuide} />
           </View>
         ) : (
@@ -284,6 +317,21 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
           />
           <Text style={styles.zoomValue}>{Math.round(zoom * 100)}%</Text>
         </View>
+        <View style={styles.zoomRow}>
+          <Text style={styles.zoomLabel}>회전</Text>
+          <Slider
+            style={styles.zoomSlider}
+            value={rotation}
+            minimumValue={0}
+            maximumValue={360}
+            step={1}
+            onValueChange={setRotation}
+            minimumTrackTintColor={COLORS.primary}
+            maximumTrackTintColor={COLORS.border}
+            thumbTintColor={COLORS.accent}
+          />
+          <Text style={styles.zoomValue}>{Math.round(rotation)}°</Text>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -324,6 +372,34 @@ function getDisplaySize(imageSize: ImageSize, baseScale: number, zoom: number) {
     width: imageSize.width * baseScale * zoom,
     height: imageSize.height * baseScale * zoom,
   };
+}
+
+function getRotatedBoundingSize(imageSize: ImageSize, rotation: number) {
+  const radians = (rotation * Math.PI) / 180;
+  const cosine = Math.abs(Math.cos(radians));
+  const sine = Math.abs(Math.sin(radians));
+
+  return {
+    width: imageSize.width * cosine + imageSize.height * sine,
+    height: imageSize.width * sine + imageSize.height * cosine,
+  };
+}
+
+function getRotatedCoverScale(
+  imageSize: ImageSize,
+  cropFrame: ImageSize,
+  rotation: number,
+) {
+  const radians = (rotation * Math.PI) / 180;
+  const cosine = Math.abs(Math.cos(radians));
+  const sine = Math.abs(Math.sin(radians));
+  const requiredSourceWidth = cropFrame.width * cosine + cropFrame.height * sine;
+  const requiredSourceHeight = cropFrame.width * sine + cropFrame.height * cosine;
+
+  return Math.max(
+    requiredSourceWidth / imageSize.width,
+    requiredSourceHeight / imageSize.height,
+  );
 }
 
 function getTouchDistance(
@@ -432,8 +508,9 @@ const styles = StyleSheet.create({
   },
   cropPreview: {
     position: 'absolute',
-    resizeMode: 'cover',
+    overflow: 'visible',
   },
+  rotatingImage: { position: 'absolute', resizeMode: 'cover' },
   cropGuide: {
     position: 'absolute',
     left: 0,

@@ -26,7 +26,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
 import { AppAlert } from "../components/AppDialog";
-import { useCategoryOptions } from "../hooks/useCategoryOptions";
 import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
 import { getColorSearchTerms } from "../services/colorSearch";
@@ -94,16 +93,10 @@ export function FriendsScreen({
   const [selectedCategory, setSelectedCategory] =
     useState<CategoryFilter>("전체");
   const { colorOptions } = useColorPaletteOptions();
-  const { categoryOptions } = useCategoryOptions();
   const keyboardHeight = useKeyboardHeight();
   const categoryFilters: CategoryFilter[] = [
     "전체",
-    ...Array.from(
-      new Set([
-        ...categoryOptions,
-        ...friendWardrobeItems.map((item) => item.category),
-      ])
-    ),
+    ...Array.from(new Set(friendWardrobeItems.map((item) => item.category))),
   ];
   const tileSize = Math.floor(
     (width - SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
@@ -342,8 +335,11 @@ export function FriendsScreen({
                           />
                         </View>
                         <View style={styles.cardLabelRow}>
-                          <Text style={styles.cardLabel} numberOfLines={1}>
-                            {item.brand || item.name || item.category}
+                          <Text style={styles.cardName} numberOfLines={1}>
+                            {item.name || item.category}
+                          </Text>
+                          <Text style={styles.cardBrand} numberOfLines={1}>
+                            {item.brand || "브랜드 없음"}
                           </Text>
                         </View>
                       </View>
@@ -382,6 +378,11 @@ export function FriendsScreen({
                       {outfit.seasons.length > 0 ? (
                         <Text style={styles.outfitSeasons} numberOfLines={1}>
                           {outfit.seasons.join(" · ")}
+                        </Text>
+                      ) : null}
+                      {outfit.tags.length > 0 ? (
+                        <Text style={styles.outfitTags} numberOfLines={1}>
+                          {outfit.tags.map((tag) => `#${tag}`).join(" ")}
                         </Text>
                       ) : null}
                     </View>
@@ -736,6 +737,7 @@ function friendWardrobeMatchesSearch(
   return [
     item.name,
     item.brand,
+    ...item.tags,
     item.category,
     item.color,
     item.colorValue,
@@ -789,7 +791,7 @@ function friendOutfitMatchesSearch(
     return [sticker.name, sticker.brand, sticker.category, ...colorTerms];
   });
 
-  return [outfit.name, ...outfit.seasons, ...stickerTerms]
+  return [outfit.name, ...outfit.seasons, ...outfit.tags, ...stickerTerms]
     .filter(Boolean)
     .join(" ")
     .toLowerCase()
@@ -1095,8 +1097,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textPrimary,
   },
-  filterScroll: { height: 48, flexGrow: 0 },
-  filterContent: { paddingTop: 4, paddingBottom: 6, gap: 6 },
+  filterScroll: { height: 50, flexGrow: 0, overflow: "visible" },
+  filterContent: { paddingVertical: 8, gap: 6, alignItems: "center" },
   categoryChip: {
     minHeight: 34,
     paddingHorizontal: 12,
@@ -1133,13 +1135,21 @@ const styles = StyleSheet.create({
   },
   cardImage: { width: "100%", height: "100%", resizeMode: "contain" },
   cardLabelRow: {
-    minHeight: 38,
+    minHeight: 52,
     paddingHorizontal: 8,
+    paddingVertical: 6,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     justifyContent: "center",
   },
-  cardLabel: { fontSize: 12, fontWeight: "600", color: COLORS.textPrimary },
+  cardName: { fontSize: 12, fontWeight: "700", color: COLORS.textPrimary },
+  cardBrand: { marginTop: 3, fontSize: 11, color: COLORS.textSecondary },
+  outfitTags: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
   outfitCard: {
     overflow: "hidden",
     borderRadius: 16,

@@ -26,6 +26,7 @@ export type ColorOption = {
   value: string;
   family: ColorFamily;
   aliases?: string[];
+  baseLabel?: string;
 };
 
 export const COLOR_OPTIONS = [
@@ -38,7 +39,6 @@ export const COLOR_OPTIONS = [
   { label: '그린', value: '#3A5A40', family: 'green', aliases: ['초록', '카키', 'green'] },
   { label: '네이비', value: '#243B53', family: 'blue', aliases: ['남색', 'navy'] },
   { label: '블루', value: '#4A6FA5', family: 'blue', aliases: ['파랑', '파란색', 'blue'] },
-  { label: '데님', value: '#2F5F8F', family: 'blue', aliases: ['청', '청색', 'denim'] },
   { label: '레드', value: '#E63946', family: 'red', aliases: ['빨강', '빨간색', '버건디', '와인', 'red'] },
   { label: '오렌지', value: '#F2994A', family: 'orange', aliases: ['주황', 'orange'] },
   { label: '옐로우', value: '#F2C94C', family: 'yellow', aliases: ['노랑', '노란색', 'yellow'] },
@@ -59,6 +59,7 @@ export type ClothingItem = {
   storagePath: string | null;
   name: string;
   brand: string;
+  tags: string[];
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;
@@ -77,6 +78,7 @@ export type NewClothingItem = {
   storagePath?: string | null;
   name: string;
   brand: string;
+  tags: string[];
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;

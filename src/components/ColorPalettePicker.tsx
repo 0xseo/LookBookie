@@ -87,8 +87,9 @@ export function ColorPalettePicker({
       ) : (
         <View style={styles.paletteWrap}>
           {colorOptions.map((option) => {
-            const selected = selectedColor === option.label;
-            const isDefault = defaultLabels.has(option.label);
+            const selected =
+              selectedColor === option.label || selectedColor === option.baseLabel;
+            const isDefault = defaultLabels.has(option.baseLabel ?? option.label);
 
             return isDefault ? (
               <Pressable

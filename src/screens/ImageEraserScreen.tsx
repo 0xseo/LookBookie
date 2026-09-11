@@ -22,6 +22,7 @@ type ImageEraserScreenProps = {
 };
 
 type EditorMessage =
+  | { type: 'editorReady' }
   | { type: 'ready' }
   | { type: 'export'; dataUrl: string }
   | { type: 'history'; canUndo: boolean; canRedo: boolean }
@@ -29,7 +30,9 @@ type EditorMessage =
 
 export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScreenProps) {
   const webViewRef = useRef<WebView>(null);
+  const imageTransferId = useRef(0);
   const brushOverlayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onCancelRef = useRef(onCancel);
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [brushSize, setBrushSize] = useState(32);
   const [showBrushOverlay, setShowBrushOverlay] = useState(false);
@@ -39,23 +42,42 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
   const [canRedo, setCanRedo] = useState(false);
 
   useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
+  useEffect(() => {
+    let isActive = true;
+
     async function loadImage() {
       try {
         setIsReady(false);
         setCanUndo(false);
         setCanRedo(false);
-        setImageDataUrl(await readImageAsDataUrl(imageUri));
+        const nextImageDataUrl = await readImageAsDataUrl(imageUri);
+
+        if (isActive) {
+          setImageDataUrl(nextImageDataUrl);
+        }
       } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
         AppAlert.alert(
           '편집기를 열지 못했어북',
           error instanceof Error ? error.message : '이미지를 읽지 못했어요.',
         );
-        onCancel();
+        onCancelRef.current();
       }
     }
 
-    loadImage();
-  }, [imageUri, onCancel]);
+    void loadImage();
+
+    return () => {
+      isActive = false;
+      imageTransferId.current += 1;
+    };
+  }, [imageUri]);
 
   useEffect(
     () => () => {
@@ -72,16 +94,53 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
     }
   }, [brushSize, isReady]);
 
-  const editorHtml = useMemo(() => {
-    if (!imageDataUrl) {
-      return '';
+  const editorHtml = useMemo(() => buildEditorHtml(), []);
+
+  const transferImageToEditor = async () => {
+    if (!imageDataUrl || !webViewRef.current) {
+      return;
     }
 
-    return buildEditorHtml(imageDataUrl);
-  }, [imageDataUrl]);
+    const transferId = imageTransferId.current + 1;
+    imageTransferId.current = transferId;
+    const chunkSize = 64 * 1024;
+    const chunks = Array.from(
+      { length: Math.ceil(imageDataUrl.length / chunkSize) },
+      (_, index) => imageDataUrl.slice(index * chunkSize, (index + 1) * chunkSize),
+    );
+
+    webViewRef.current.postMessage(JSON.stringify({ type: 'imageStart', total: chunks.length }));
+
+    for (let index = 0; index < chunks.length; index += 1) {
+      if (imageTransferId.current !== transferId) {
+        return;
+      }
+
+      webViewRef.current?.postMessage(
+        JSON.stringify({ type: 'imageChunk', index, data: chunks[index] }),
+      );
+
+      if (index % 4 === 3) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    webViewRef.current?.postMessage(JSON.stringify({ type: 'imageEnd' }));
+  };
 
   const handleMessage = (rawMessage: string) => {
-    const message = JSON.parse(rawMessage) as EditorMessage;
+    let message: EditorMessage;
+
+    try {
+      message = JSON.parse(rawMessage) as EditorMessage;
+    } catch {
+      return;
+    }
+
+    if (message.type === 'editorReady') {
+      void transferImageToEditor();
+      return;
+    }
 
     if (message.type === 'ready') {
       setIsReady(true);
@@ -168,7 +227,7 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
       </View>
 
       <View style={styles.editorArea}>
-        {editorHtml ? (
+        {imageDataUrl ? (
           <WebView
             ref={webViewRef}
             originWhitelist={['*']}
@@ -182,6 +241,12 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
         ) : (
           <ActivityIndicator color={COLORS.primary} />
         )}
+        {imageDataUrl && !isReady ? (
+          <View pointerEvents="none" style={styles.loadingOverlay}>
+            <ActivityIndicator color={COLORS.primary} />
+            <Text style={styles.loadingText}>이미지를 편집기에 올리고 있어북...</Text>
+          </View>
+        ) : null}
         {showBrushOverlay ? (
           <View pointerEvents="none" style={styles.brushOverlay}>
             <View
@@ -249,7 +314,7 @@ export function ImageEraserScreen({ imageUri, onCancel, onDone }: ImageEraserScr
   );
 }
 
-function buildEditorHtml(imageDataUrl: string) {
+function buildEditorHtml() {
   return `
 <!doctype html>
 <html>
@@ -307,7 +372,6 @@ function buildEditorHtml(imageDataUrl: string) {
     <div id="brush"></div>
   </div>
   <script>
-    const imageDataUrl = ${JSON.stringify(imageDataUrl)};
     const canvas = document.getElementById('canvas');
     const brush = document.getElementById('brush');
     const ctx = canvas.getContext('2d');
@@ -319,6 +383,8 @@ function buildEditorHtml(imageDataUrl: string) {
     let history = [];
     let historyIndex = -1;
     const maxHistory = 32;
+    let incomingImageChunks = [];
+    let imageTransferComplete = false;
 
     function post(message) {
       window.ReactNativeWebView.postMessage(JSON.stringify(message));
@@ -326,6 +392,43 @@ function buildEditorHtml(imageDataUrl: string) {
 
     function postHistoryState() {
       post({ type: 'history', canUndo: historyIndex > 0, canRedo: historyIndex < history.length - 1 });
+    }
+
+    function receiveNativeMessage(event) {
+      try {
+        const message = JSON.parse(event.data);
+
+        if (message.type === 'imageStart') {
+          incomingImageChunks = new Array(message.total);
+          imageTransferComplete = false;
+          return;
+        }
+
+        if (message.type === 'imageChunk') {
+          incomingImageChunks[message.index] = message.data;
+          return;
+        }
+
+        if (message.type === 'imageEnd') {
+          if (imageTransferComplete) {
+            return;
+          }
+
+          const receivedChunkCount = incomingImageChunks.filter(
+            (chunk) => typeof chunk === 'string'
+          ).length;
+          if (receivedChunkCount !== incomingImageChunks.length) {
+            post({ type: 'error', message: '이미지 전송이 완료되지 않았어요.' });
+            return;
+          }
+
+          image.src = incomingImageChunks.join('');
+          imageTransferComplete = true;
+          incomingImageChunks = [];
+        }
+      } catch (error) {
+        post({ type: 'error', message: error.message || 'image transfer failed' });
+      }
     }
 
     function drawOriginalImage() {
@@ -548,7 +651,9 @@ function buildEditorHtml(imageDataUrl: string) {
     canvas.addEventListener('touchmove', move, { passive: false });
     canvas.addEventListener('touchend', end, { passive: false });
     canvas.addEventListener('touchcancel', end, { passive: false });
-    image.src = imageDataUrl;
+    window.addEventListener('message', receiveNativeMessage);
+    document.addEventListener('message', receiveNativeMessage);
+    post({ type: 'editorReady' });
   </script>
 </body>
 </html>
@@ -613,6 +718,21 @@ const styles = StyleSheet.create({
   webView: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.background,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
   },
   controls: {
     padding: 16,

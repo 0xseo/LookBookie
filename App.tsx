@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal, StatusBar, StyleSheet, View } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 import {
@@ -115,6 +115,7 @@ function AppContent() {
   const [isAddVisible, setIsAddVisible] = useState(false);
   const [selectedWardrobeItem, setSelectedWardrobeItem] =
     useState<ClothingItem | null>(null);
+  const [requestedOutfitId, setRequestedOutfitId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDatabaseReady, setIsDatabaseReady] = useState(false);
   const [outfitsCount, setOutfitsCount] = useState(0);
@@ -144,6 +145,13 @@ function AppContent() {
   const [friendOutfits, setFriendOutfits] = useState<FriendOutfit[]>([]);
   const addItemScreenRef = useRef<AddItemScreenHandle>(null);
   const tabBarInset = Math.max(8, insets.bottom);
+  const brandSuggestions = useMemo(
+    () =>
+      Array.from(
+        new Set(items.map((item) => item.brand.trim()).filter(Boolean)),
+      ).sort((left, right) => left.localeCompare(right, "ko")),
+    [items],
+  );
 
   const visibleItems =
     selectedCategory === "전체"
@@ -838,8 +846,11 @@ function AppContent() {
           items={items}
           isLoading={isLoading}
           bottomInset={tabBarInset}
+          requestedOutfitId={requestedOutfitId}
           onOutfitSaved={handleOutfitSaved}
           onOpenWardrobe={() => setActiveTab("wardrobe")}
+          onOpenClothingItem={setSelectedWardrobeItem}
+          onRequestedOutfitOpened={() => setRequestedOutfitId(null)}
         />
       ) : null}
 
@@ -906,6 +917,7 @@ function AppContent() {
       >
         <AddItemScreen
           ref={addItemScreenRef}
+          brandSuggestions={brandSuggestions}
           onCancel={() => setIsAddVisible(false)}
           onSaved={handleSaved}
         />
@@ -920,9 +932,15 @@ function AppContent() {
         {selectedWardrobeItem ? (
           <ClothingDetailScreen
             item={selectedWardrobeItem}
+            brandSuggestions={brandSuggestions}
             onClose={() => setSelectedWardrobeItem(null)}
             onSaved={handleItemUpdated}
             onDeleted={handleItemDeleted}
+            onOpenOutfit={(outfitId) => {
+              setSelectedWardrobeItem(null);
+              setRequestedOutfitId(outfitId);
+              setActiveTab("codiBook");
+            }}
           />
         ) : null}
       </Modal>

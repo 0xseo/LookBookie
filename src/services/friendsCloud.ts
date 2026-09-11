@@ -329,7 +329,7 @@ export async function listFriendWardrobe(friendId: string): Promise<FriendWardro
 
   const { data, error } = await client
     .from('clothes')
-    .select('id,owner_id,remote_image_url,name,brand,category,seasons,color,color_value,color_family,created_at')
+    .select('id,owner_id,remote_image_url,name,brand,tags,category,seasons,color,color_value,color_family,created_at')
     .eq('owner_id', friendId)
     .order('created_at', { ascending: false });
 
@@ -343,6 +343,7 @@ export async function listFriendWardrobe(friendId: string): Promise<FriendWardro
     remoteImageUrl: item.remote_image_url,
     name: item.name,
     brand: item.brand,
+    tags: Array.isArray(item.tags) ? item.tags : [],
     category: item.category,
     seasons: item.seasons,
     color: item.color,
@@ -358,7 +359,7 @@ export async function listFriendOutfits(friendId: string): Promise<FriendOutfit[
 
   const { data, error } = await client
     .from('outfits')
-    .select('id,owner_id,name,seasons,stickers,canvas_width,canvas_height,created_at')
+    .select('id,owner_id,name,seasons,tags,stickers,canvas_width,canvas_height,created_at')
     .eq('owner_id', friendId)
     .order('created_at', { ascending: false });
 
@@ -371,6 +372,7 @@ export async function listFriendOutfits(friendId: string): Promise<FriendOutfit[
     ownerId: outfit.owner_id,
     name: outfit.name,
     seasons: outfit.seasons,
+    tags: Array.isArray(outfit.tags) ? outfit.tags : [],
     stickers: parseFriendOutfitStickers(outfit.stickers),
     canvasWidth: outfit.canvas_width,
     canvasHeight: outfit.canvas_height,

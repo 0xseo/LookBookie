@@ -267,7 +267,12 @@ export function WardrobeScreen({
         ) : null}
 
         {toolbarPanel === "filter" ? (
-          <View style={styles.controlPanel}>
+          <ScrollView
+            style={styles.filterPanelScroll}
+            contentContainerStyle={styles.controlPanelContent}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.controlHeadingRow}>
               <Text style={styles.controlTitle}>필터</Text>
               {activeFilterCount > 0 ? (
@@ -347,7 +352,7 @@ export function WardrobeScreen({
                 );
               })}
             </View>
-          </View>
+          </ScrollView>
         ) : null}
 
         <ScrollView
@@ -418,9 +423,12 @@ export function WardrobeScreen({
                   />
                   <SyncStatusBadge status={item.cloudSyncStatus} />
                 </View>
-                <View style={styles.brandRow}>
-                  <Text style={styles.brandText} numberOfLines={1}>
-                    {item.brand || item.name || item.category}
+                <View style={styles.itemLabelBlock}>
+                  <Text style={styles.itemNameText} numberOfLines={1}>
+                    {item.name || item.category}
+                  </Text>
+                  <Text style={styles.itemBrandText} numberOfLines={1}>
+                    {item.brand || "브랜드 없음"}
                   </Text>
                 </View>
               </Pressable>
@@ -598,6 +606,18 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     gap: 10,
   },
+  filterPanelScroll: {
+    maxHeight: 216,
+    marginHorizontal: 16,
+    flexGrow: 0,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: COLORS.border,
+  },
+  controlPanelContent: {
+    paddingVertical: 12,
+    gap: 10,
+  },
   controlHeadingRow: {
     minHeight: 32,
     flexDirection: "row",
@@ -708,13 +728,14 @@ const styles = StyleSheet.create({
   },
   filterContent: {
     paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 6,
+    paddingVertical: 8,
     gap: 6,
+    alignItems: "center",
   },
   filterScroll: {
-    height: 48,
+    height: 50,
     flexGrow: 0,
+    overflow: "visible",
   },
   categoryChip: {
     minHeight: 34,
@@ -802,18 +823,25 @@ const styles = StyleSheet.create({
   syncPillLocal: {
     backgroundColor: COLORS.textSecondary,
   },
-  brandRow: {
-    minHeight: 38,
+  itemLabelBlock: {
+    minHeight: 52,
     paddingHorizontal: 8,
+    paddingVertical: 6,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     justifyContent: "center",
     backgroundColor: COLORS.surface,
   },
-  brandText: {
+  itemNameText: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
     color: COLORS.textPrimary,
+  },
+  itemBrandText: {
+    marginTop: 3,
+    fontSize: 11,
+    fontWeight: "400",
+    color: COLORS.textSecondary,
   },
   emptyState: {
     alignItems: "center",
@@ -850,5 +878,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.primary,
+    elevation: 5,
+    shadowColor: COLORS.textPrimary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
   },
 });

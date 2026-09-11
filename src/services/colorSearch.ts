@@ -48,13 +48,21 @@ export function sanitizeColorOption(option: Partial<ColorOption>): ColorOption |
     value,
     family,
     aliases: option.aliases?.filter((alias) => alias.trim().length > 0),
+    baseLabel: option.baseLabel?.trim() || undefined,
   };
 }
 
 export function mergeColorOptions(options: readonly ColorOption[]) {
   const seenLabels = new Set<string>();
+  const overriddenDefaults = new Set(
+    options.flatMap((option) => option.baseLabel ? [option.baseLabel] : []),
+  );
 
   return options.filter((option) => {
+    if (!option.baseLabel && overriddenDefaults.has(option.label)) {
+      return false;
+    }
+
     if (seenLabels.has(option.label)) {
       return false;
     }
@@ -68,7 +76,9 @@ export function resolveColorOption(
   label: string,
   options: readonly ColorOption[] = COLOR_OPTIONS,
 ): ColorOption {
-  const directMatch = options.find((option) => option.label === label);
+  const directMatch = options.find(
+    (option) => option.label === label || option.baseLabel === label,
+  );
 
   if (directMatch) {
     return directMatch;
@@ -111,6 +121,7 @@ export function clothingMatchesSearch(
   const searchableText = [
     item.name,
     item.brand,
+    ...item.tags,
     item.category,
     item.color,
     item.colorValue,

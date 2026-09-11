@@ -6,6 +6,7 @@ type SyncOutfitInput = {
   remoteRecordId: string | null;
   name: string;
   seasons: Season[];
+  tags: string[];
   stickers: OutfitSticker[];
   wardrobeItems: ClothingItem[];
   canvasWidth: number | null;
@@ -25,6 +26,7 @@ export async function syncOutfitToCloud({
   remoteRecordId,
   name,
   seasons,
+  tags,
   stickers,
   wardrobeItems,
   canvasWidth,
@@ -58,6 +60,7 @@ export async function syncOutfitToCloud({
     session.user.id,
     name,
     seasons,
+    tags,
     stickers,
     wardrobeItems,
     canvasWidth,
@@ -191,6 +194,7 @@ function buildCloudOutfitPayload(
   ownerId: string,
   name: string,
   seasons: Season[],
+  tags: string[],
   stickers: OutfitSticker[],
   wardrobeItems: ClothingItem[],
   canvasWidth: number | null,
@@ -201,10 +205,10 @@ function buildCloudOutfitPayload(
     const wardrobeItem = wardrobeById.get(sticker.clothingItemId);
 
     return {
-      remoteImageUrl: wardrobeItem?.remoteImageUrl ?? null,
-      name: wardrobeItem?.name ?? null,
-      brand: wardrobeItem?.brand ?? null,
-      category: wardrobeItem?.category ?? null,
+      remoteImageUrl: wardrobeItem?.remoteImageUrl ?? sticker.remoteImageUrl,
+      name: wardrobeItem?.name ?? sticker.name ?? null,
+      brand: wardrobeItem?.brand ?? sticker.brand ?? null,
+      category: wardrobeItem?.category ?? sticker.category ?? null,
       color: wardrobeItem?.color ?? null,
       colorValue: wardrobeItem?.colorValue ?? null,
       colorFamily: wardrobeItem?.colorFamily ?? null,
@@ -220,6 +224,7 @@ function buildCloudOutfitPayload(
     owner_id: ownerId,
     name,
     seasons,
+    tags,
     stickers: cloudStickers,
     canvas_width: canvasWidth,
     canvas_height: canvasHeight,

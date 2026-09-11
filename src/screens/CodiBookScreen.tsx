@@ -20,6 +20,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Check,
+  CloudAlert,
+  CloudCheck,
   Plus,
   RotateCw,
   Scaling,
@@ -29,6 +31,7 @@ import {
 
 import { COLORS } from "../../constants/colors";
 import { AppAlert } from "../components/AppDialog";
+import { TagInput } from "../components/TagInput";
 import {
   deleteOutfitFromCloud,
   syncOutfitToCloud,
@@ -56,8 +59,11 @@ type CodiBookScreenProps = {
   items: ClothingItem[];
   isLoading: boolean;
   bottomInset: number;
+  requestedOutfitId: number | null;
   onOutfitSaved: () => void;
   onOpenWardrobe: () => void;
+  onOpenClothingItem: (item: ClothingItem) => void;
+  onRequestedOutfitOpened: () => void;
 };
 
 type CanvasSize = {
@@ -102,8 +108,11 @@ export function CodiBookScreen({
   items,
   isLoading,
   bottomInset,
+  requestedOutfitId,
   onOutfitSaved,
   onOpenWardrobe,
+  onOpenClothingItem,
+  onRequestedOutfitOpened,
 }: CodiBookScreenProps) {
   const { width } = useWindowDimensions();
   const [mode, setMode] = useState<CodiMode>("list");
@@ -116,6 +125,7 @@ export function CodiBookScreen({
   const [editingOutfitSeasons, setEditingOutfitSeasons] = useState<Season[]>(
     []
   );
+  const [editingOutfitTags, setEditingOutfitTags] = useState<string[]>([]);
   const [canvasSize, setCanvasSize] = useState<CanvasSize>({
     width: 0,
     height: 0,
@@ -209,6 +219,7 @@ export function CodiBookScreen({
     setEditingOutfitId(null);
     setEditingOutfitName("");
     setEditingOutfitSeasons([]);
+    setEditingOutfitTags([]);
     setStickers([]);
     setSelectedStickerId(null);
     setPickerCategory("전체");
@@ -216,22 +227,45 @@ export function CodiBookScreen({
     setMode("picker");
   };
 
-  const openOutfit = (outfit: Outfit) => {
-    const restoredStickers = outfit.stickers.map((sticker, index) => ({
-      ...sticker,
-      id: `outfit-${outfit.id}-${index}-${Date.now()}`,
-      zIndex: index + 1,
-    }));
+  const openOutfit = useCallback((outfit: Outfit) => {
+    const restoredStickers = outfit.stickers.map((sticker, index) => {
+      const wardrobeItem = wardrobeItemsById.get(sticker.clothingItemId);
+
+      return {
+        ...sticker,
+        id: `outfit-${outfit.id}-${index}-${Date.now()}`,
+        remoteImageUrl: wardrobeItem?.remoteImageUrl ?? sticker.remoteImageUrl ?? null,
+        name: wardrobeItem?.name ?? sticker.name ?? "",
+        brand: wardrobeItem?.brand ?? sticker.brand ?? "",
+        category: wardrobeItem?.category ?? sticker.category ?? null,
+        zIndex: index + 1,
+      };
+    });
 
     setEditingOutfitId(outfit.id);
     setEditingOutfitName(outfit.name);
     setEditingOutfitSeasons(outfit.seasons);
+    setEditingOutfitTags(outfit.tags);
     setStickers(restoredStickers);
     setSelectedStickerId(
       restoredStickers[restoredStickers.length - 1]?.id ?? null
     );
     setMode("canvas");
-  };
+  }, [wardrobeItemsById]);
+
+  useEffect(() => {
+    if (!requestedOutfitId || outfits.length === 0) {
+      return;
+    }
+
+    const requestedOutfit = outfits.find((outfit) => outfit.id === requestedOutfitId);
+
+    if (requestedOutfit) {
+      openOutfit(requestedOutfit);
+    }
+
+    onRequestedOutfitOpened();
+  }, [onRequestedOutfitOpened, openOutfit, outfits, requestedOutfitId]);
 
   const toggleStickerFromItem = (item: ClothingItem) => {
     const existingSticker = stickers.find(
@@ -252,6 +286,10 @@ export function CodiBookScreen({
       id: `sticker-${item.id}-${Date.now()}`,
       clothingItemId: item.id,
       localImagePath: item.localImagePath,
+      remoteImageUrl: item.remoteImageUrl,
+      name: item.name,
+      brand: item.brand,
+      category: item.category,
       x: 24 + (nextIndex % 3) * 28,
       y: 32 + (nextIndex % 4) * 24,
       size,
@@ -318,6 +356,7 @@ export function CodiBookScreen({
           ...existingOutfit,
           name: outfitName,
           seasons: editingOutfitSeasons,
+          tags: editingOutfitTags,
           stickers,
           canvasWidth,
           canvasHeight,
@@ -330,6 +369,7 @@ export function CodiBookScreen({
         localOutfitId = await insertOutfit({
           name: outfitName,
           seasons: editingOutfitSeasons,
+          tags: editingOutfitTags,
           stickers,
           canvasWidth,
           canvasHeight,
@@ -340,6 +380,7 @@ export function CodiBookScreen({
         remoteRecordId: existingOutfit?.remoteRecordId ?? null,
         name: outfitName,
         seasons: editingOutfitSeasons,
+        tags: editingOutfitTags,
         stickers,
         wardrobeItems: items,
         canvasWidth,
@@ -668,6 +709,11 @@ export function CodiBookScreen({
                   );
                 })}
               </View>
+              <TagInput
+                tags={editingOutfitTags}
+                onChange={setEditingOutfitTags}
+                placeholder="코디 태그 입력"
+              />
             </View>
 
             <View style={styles.canvasActions}>
@@ -732,6 +778,11 @@ export function CodiBookScreen({
                 />
               ))}
             </View>
+            <OutfitItemsBar
+              stickers={stickers}
+              wardrobeItemsById={wardrobeItemsById}
+              onOpenClothingItem={onOpenClothingItem}
+            />
           </View>
         ) : null}
 
@@ -803,6 +854,7 @@ function OutfitList({
             canvasHeight={item.canvasHeight}
             previewSize={tileSize}
           />
+          <OutfitSyncStatusBadge status={item.cloudSyncStatus} />
           <View style={styles.outfitLabelRow}>
             <Text style={styles.outfitName} numberOfLines={1}>
               {item.name}
@@ -813,10 +865,88 @@ function OutfitList({
                 {item.seasons.join(" · ")}
               </Text>
             ) : null}
+            {item.tags.length > 0 ? (
+              <Text style={styles.outfitTags} numberOfLines={1}>
+                {item.tags.map((tag) => `#${tag}`).join(" ")}
+              </Text>
+            ) : null}
           </View>
         </Pressable>
       )}
     />
+  );
+}
+
+function OutfitSyncStatusBadge({ status }: { status: Outfit["cloudSyncStatus"] }) {
+  const isSynced = status === "synced";
+  const Icon = isSynced ? CloudCheck : CloudAlert;
+
+  return (
+    <View
+      style={[
+        styles.outfitSyncBadge,
+        status === "synced"
+          ? styles.outfitSyncSynced
+          : status === "failed"
+            ? styles.outfitSyncFailed
+            : status === "pending"
+              ? styles.outfitSyncPending
+              : styles.outfitSyncLocal,
+      ]}
+      accessibilityLabel={isSynced ? "클라우드 동기화 완료" : "클라우드 동기화 필요"}
+    >
+      <Icon color={COLORS.surface} size={17} strokeWidth={2.6} />
+    </View>
+  );
+}
+
+function OutfitItemsBar({
+  stickers,
+  wardrobeItemsById,
+  onOpenClothingItem,
+}: {
+  stickers: OutfitSticker[];
+  wardrobeItemsById: Map<number, ClothingItem>;
+  onOpenClothingItem: (item: ClothingItem) => void;
+}) {
+  return (
+    <View style={styles.outfitItemsSection}>
+      <Text style={styles.outfitItemsTitle}>사용한 옷 {stickers.length}개</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.outfitItemsContent}
+      >
+        {stickers.map((sticker) => {
+          const wardrobeItem = wardrobeItemsById.get(sticker.clothingItemId);
+          const deleted = !wardrobeItem;
+
+          return (
+            <Pressable
+              key={`used-${sticker.id}`}
+              onPress={() => wardrobeItem && onOpenClothingItem(wardrobeItem)}
+              disabled={deleted}
+              style={styles.outfitItemCard}
+              hitSlop={8}
+            >
+              <Image source={{ uri: sticker.localImagePath }} style={styles.outfitItemImage} />
+              <View style={styles.outfitItemTextGroup}>
+                <Text style={styles.outfitItemName} numberOfLines={1}>
+                  {deleted
+                    ? "삭제된 옷입니다"
+                    : wardrobeItem.name || sticker.name || "이름 없음"}
+                </Text>
+                <Text style={styles.outfitItemBrand} numberOfLines={1}>
+                  {wardrobeItem?.brand ||
+                    sticker.brand ||
+                    (deleted ? "옷장에 없음" : "브랜드 없음")}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -1327,6 +1457,7 @@ function outfitMatchesSearch(
     outfit.name,
     `${outfit.stickers.length}개`,
     ...outfit.seasons,
+    ...outfit.tags,
   ]
     .filter(Boolean)
     .join(" ")
@@ -1339,9 +1470,15 @@ function outfitMatchesSearch(
   return outfit.stickers.some((sticker) => {
     const wardrobeItem = wardrobeItemsById.get(sticker.clothingItemId);
 
-    return wardrobeItem
-      ? clothingMatchesSearch(wardrobeItem, query, colorOptions)
-      : false;
+    if (wardrobeItem) {
+      return clothingMatchesSearch(wardrobeItem, query, colorOptions);
+    }
+
+    return [sticker.name, sticker.brand, sticker.category]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
   });
 }
 
@@ -1580,6 +1717,27 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: COLORS.primary,
   },
+  outfitTags: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
+  outfitSyncBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 20,
+  },
+  outfitSyncSynced: { backgroundColor: COLORS.primary },
+  outfitSyncFailed: { backgroundColor: COLORS.danger },
+  outfitSyncPending: { backgroundColor: COLORS.accent },
+  outfitSyncLocal: { backgroundColor: COLORS.textSecondary },
   listSearchWrap: {
     paddingHorizontal: 16,
     paddingBottom: 8,
@@ -1759,6 +1917,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.primary,
+    elevation: 5,
+    shadowColor: COLORS.textPrimary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
   },
   canvasActions: {
     paddingHorizontal: 16,
@@ -1822,12 +1985,53 @@ const styles = StyleSheet.create({
   canvas: {
     flex: 1,
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 8,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.canvasBg,
     overflow: "hidden",
+  },
+  outfitItemsSection: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  outfitItemsTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  outfitItemsContent: { gap: 8, paddingRight: 16 },
+  outfitItemCard: {
+    width: 196,
+    minHeight: 64,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  outfitItemImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    resizeMode: "contain",
+    backgroundColor: COLORS.background,
+  },
+  outfitItemTextGroup: { flex: 1 },
+  outfitItemName: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+  },
+  outfitItemBrand: {
+    marginTop: 4,
+    fontSize: 11,
+    color: COLORS.textSecondary,
   },
   emptyState: {
     flex: 1,
