@@ -29,6 +29,10 @@ import {
 } from "./src/storage/database";
 import { deleteCurrentCloudAccount } from "./src/services/accountCloud";
 import {
+  getCloudErrorMessage,
+  isLikelySupabaseUnavailableError,
+} from "./src/services/cloudError";
+import {
   clearRememberedCloudAuthProvider,
   getRememberedCloudAuthProvider,
   rememberCloudAuthProvider,
@@ -85,6 +89,19 @@ import type {
 } from "./src/types/friends";
 
 const SPLASH_SCREEN_DURATION_MS = 1_500;
+const SUPABASE_UNAVAILABLE_TITLE =
+  "수퍼베이스 데이터베이스가 일시정지됐어북";
+const SUPABASE_UNAVAILABLE_MESSAGE =
+  "개발자에게 연락주면 빠르게 켤 수 있어북";
+
+function showCloudRequestError(fallbackTitle: string, error: unknown) {
+  if (isLikelySupabaseUnavailableError(error)) {
+    AppAlert.alert(SUPABASE_UNAVAILABLE_TITLE, SUPABASE_UNAVAILABLE_MESSAGE);
+    return;
+  }
+
+  AppAlert.alert(fallbackTitle, getCloudErrorMessage(error));
+}
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -218,10 +235,7 @@ function AppContent() {
       setIncomingFriendRequests(incomingRequests);
       setOutgoingFriendRequests(outgoingRequests);
     } catch (error) {
-      AppAlert.alert(
-        "친구 목록을 불러오지 못했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("친구 목록을 불러오지 못했어북", error);
     }
   }, [cloudSession]);
 
@@ -349,12 +363,7 @@ function AppContent() {
         setCloudSession(session);
         setCloudProvider(await getRememberedCloudAuthProvider(session));
       } catch (error) {
-        AppAlert.alert(
-          "클라우드 세션을 확인하지 못했어북",
-          error instanceof Error
-            ? error.message
-            : "알 수 없는 오류가 발생했어요."
-        );
+        showCloudRequestError("클라우드 세션을 확인하지 못했어북", error);
       }
     }
 
@@ -391,12 +400,7 @@ function AppContent() {
         setCurrentProfile(await ensureCurrentProfile());
         await loadFriendList();
       } catch (error) {
-        AppAlert.alert(
-          "클라우드 프로필을 준비하지 못했어북",
-          error instanceof Error
-            ? error.message
-            : "알 수 없는 오류가 발생했어요."
-        );
+        showCloudRequestError("클라우드 프로필을 준비하지 못했어북", error);
       }
     }
 
@@ -461,10 +465,7 @@ function AppContent() {
 
       await loadCloudPendingCount();
     } catch (error) {
-      AppAlert.alert(
-        "로그인에 실패했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("로그인에 실패했어북", error);
     } finally {
       setIsCloudBusy(false);
     }
@@ -488,10 +489,7 @@ function AppContent() {
         "이메일 확인이 필요하면 받은 편지함을 확인해 주세요."
       );
     } catch (error) {
-      AppAlert.alert(
-        "가입에 실패했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("가입에 실패했어북", error);
     } finally {
       setIsCloudBusy(false);
     }
@@ -520,10 +518,7 @@ function AppContent() {
       setCloudProvider(provider);
       await loadCloudPendingCount();
     } catch (error) {
-      AppAlert.alert(
-        "소셜 로그인에 실패했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("소셜 로그인에 실패했어북", error);
     } finally {
       setIsCloudBusy(false);
     }
@@ -548,10 +543,7 @@ function AppContent() {
       setCloudProvider(null);
       setCurrentProfile(null);
     } catch (error) {
-      AppAlert.alert(
-        "로그아웃에 실패했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("로그아웃에 실패했어북", error);
     } finally {
       setIsCloudBusy(false);
     }
@@ -584,10 +576,7 @@ function AppContent() {
           : "클라우드 계정은 삭제됐어요. 로컬 데이터 상태를 정리하려면 앱을 다시 열어 주세요."
       );
     } catch (error) {
-      AppAlert.alert(
-        "탈퇴를 완료하지 못했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("탈퇴를 완료하지 못했어북", error);
     } finally {
       setIsCloudBusy(false);
     }
@@ -600,10 +589,7 @@ function AppContent() {
       const updatedProfile = await updateCurrentProfileDisplayName(displayName);
       setCurrentProfile(updatedProfile);
     } catch (error) {
-      AppAlert.alert(
-        "이름을 저장하지 못했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("이름을 저장하지 못했어북", error);
       throw error;
     } finally {
       setIsCloudBusy(false);
@@ -617,10 +603,7 @@ function AppContent() {
       const updatedProfile = await updateCurrentProfileHandle(handle);
       setCurrentProfile(updatedProfile);
     } catch (error) {
-      AppAlert.alert(
-        "룩부기 ID를 저장하지 못했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("룩부기 ID를 저장하지 못했어북", error);
       throw error;
     } finally {
       setIsCloudBusy(false);
@@ -699,10 +682,7 @@ function AppContent() {
         "상대가 수락하면 친구 옷장을 볼 수 있어요."
       );
     } catch (error) {
-      AppAlert.alert(
-        "친구 요청에 실패했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("친구 요청에 실패했어북", error);
     } finally {
       setIsFriendBusy(false);
     }
@@ -715,10 +695,7 @@ function AppContent() {
       await acceptFriendRequest(request.friendshipId);
       await loadFriendList();
     } catch (error) {
-      AppAlert.alert(
-        "친구 요청 수락에 실패했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("친구 요청 수락에 실패했어북", error);
     } finally {
       setIsFriendBusy(false);
     }
@@ -731,10 +708,7 @@ function AppContent() {
       await declineFriendRequest(request.friendshipId);
       await loadFriendList();
     } catch (error) {
-      AppAlert.alert(
-        "친구 요청 처리에 실패했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("친구 요청 처리에 실패했어북", error);
     } finally {
       setIsFriendBusy(false);
     }
@@ -753,10 +727,7 @@ function AppContent() {
       setFriendWardrobeItems(wardrobeItems);
       setFriendOutfits(outfits);
     } catch (error) {
-      AppAlert.alert(
-        "친구 데이터를 불러오지 못했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("친구 데이터를 불러오지 못했어북", error);
     } finally {
       setIsFriendBusy(false);
     }
@@ -816,10 +787,7 @@ function AppContent() {
         `${syncedCount}개의 옷을 클라우드에 올렸어요.`
       );
     } catch (error) {
-      AppAlert.alert(
-        "동기화에 실패했어북",
-        error instanceof Error ? error.message : "알 수 없는 오류가 발생했어요."
-      );
+      showCloudRequestError("동기화에 실패했어북", error);
     } finally {
       setIsCloudBusy(false);
     }
