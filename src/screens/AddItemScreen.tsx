@@ -37,6 +37,7 @@ import { syncClothingItemToCloud } from '../services/wardrobeCloud';
 import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
 import { useCategoryOptions } from '../hooks/useCategoryOptions';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { useFitSizeOptions } from '../hooks/useFitSizeOptions';
 import {
   COLOR_OPTIONS,
   SEASONS,
@@ -65,6 +66,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     const [name, setName] = useState('');
     const [brand, setBrand] = useState('');
     const [tags, setTags] = useState<string[]>([]);
+    const [fitSizes, setFitSizes] = useState<string[]>([]);
     const [category, setCategory] = useState<ClothingCategory>('상의');
     const [seasons, setSeasons] = useState<Season[]>([]);
     const [color, setColor] = useState<ClothingColor>('블랙');
@@ -80,12 +82,14 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
     const [isCancelConfirmVisible, setIsCancelConfirmVisible] = useState(false);
     const { colorOptions } = useColorPaletteOptions();
     const { categoryOptions } = useCategoryOptions();
+    const { fitSizeOptions } = useFitSizeOptions();
     const keyboardHeight = useKeyboardHeight();
 
     const hasDraft =
       Boolean(imageUri || cropSourceUri || eraserSourceUri || brand.trim()) ||
       name.trim().length > 0 ||
       tags.length > 0 ||
+      fitSizes.length > 0 ||
       seasons.length > 0 ||
       category !== categoryOptions[0] ||
       color !== '블랙';
@@ -243,6 +247,14 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
       );
     };
 
+    const toggleFitSize = (option: string) => {
+      setFitSizes((current) =>
+        current.includes(option)
+          ? current.filter((value) => value !== option)
+          : [...current, option],
+      );
+    };
+
     const saveItem = async () => {
       if (!imageUri) {
         AppAlert.alert('사진이 필요해북', '등록할 옷 사진을 먼저 선택해 주세요.');
@@ -260,6 +272,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
           name: name.trim(),
           brand: brand.trim(),
           tags,
+          fitSizes,
           category,
           seasons,
           color,
@@ -368,6 +381,20 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
             <View style={styles.formGroup}>
               <Text style={styles.label}>태그</Text>
               <TagInput tags={tags} onChange={setTags} placeholder="예: 출근룩, 빈티지" />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>핏/사이즈</Text>
+              <View style={styles.chipWrap}>
+                {fitSizeOptions.map((option) => (
+                  <ChoiceChip
+                    key={option}
+                    label={option}
+                    selected={fitSizes.includes(option)}
+                    onPress={() => toggleFitSize(option)}
+                  />
+                ))}
+              </View>
             </View>
 
             <View style={styles.formGroup}>

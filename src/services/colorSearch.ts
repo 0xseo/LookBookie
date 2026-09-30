@@ -122,6 +122,7 @@ export function clothingMatchesSearch(
     item.name,
     item.brand,
     ...item.tags,
+    ...item.fitSizes,
     item.category,
     item.color,
     item.colorValue,

@@ -36,6 +36,7 @@ import {
 import { useColorPaletteOptions } from '../hooks/useColorPaletteOptions';
 import { useCategoryOptions } from '../hooks/useCategoryOptions';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { useFitSizeOptions } from '../hooks/useFitSizeOptions';
 import {
   SEASONS,
   type ClothingCategory,
@@ -54,6 +55,7 @@ type ClothingDetailScreenProps = {
   onSaved: () => void;
   onDeleted: () => void;
   onOpenOutfit: (outfitId: number) => void;
+  onOpenFits: (clothingItemId: number) => void;
 };
 
 export function ClothingDetailScreen({
@@ -63,6 +65,7 @@ export function ClothingDetailScreen({
   onSaved,
   onDeleted,
   onOpenOutfit,
+  onOpenFits,
 }: ClothingDetailScreenProps) {
   const [imageUri, setImageUri] = useState(item.localImagePath);
   const [imageChanged, setImageChanged] = useState(false);
@@ -71,6 +74,7 @@ export function ClothingDetailScreen({
   const [name, setName] = useState(item.name);
   const [brand, setBrand] = useState(item.brand);
   const [tags, setTags] = useState(item.tags);
+  const [fitSizes, setFitSizes] = useState(item.fitSizes);
   const [category, setCategory] = useState<ClothingCategory>(item.category);
   const [seasons, setSeasons] = useState<Season[]>(item.seasons);
   const [color, setColor] = useState<ClothingColor>(item.color);
@@ -87,12 +91,14 @@ export function ClothingDetailScreen({
   const [containingOutfits, setContainingOutfits] = useState<Outfit[]>([]);
   const { colorOptions } = useColorPaletteOptions();
   const { categoryOptions } = useCategoryOptions();
+  const { fitSizeOptions } = useFitSizeOptions();
   const keyboardHeight = useKeyboardHeight();
   const hasDraft =
     imageUri !== item.localImagePath ||
     name !== item.name ||
     brand !== item.brand ||
     tags.join('|') !== item.tags.join('|') ||
+    fitSizes.join('|') !== item.fitSizes.join('|') ||
     category !== item.category ||
     color !== item.color ||
     colorValue !== item.colorValue ||
@@ -198,6 +204,14 @@ export function ClothingDetailScreen({
     );
   };
 
+  const toggleFitSize = (option: string) => {
+    setFitSizes((current) =>
+      current.includes(option)
+        ? current.filter((value) => value !== option)
+        : [...current, option],
+    );
+  };
+
   const saveChanges = async (options?: { retrySyncOnly?: boolean }) => {
     setIsSaving(true);
 
@@ -214,6 +228,7 @@ export function ClothingDetailScreen({
         name: name.trim(),
         brand: brand.trim(),
         tags,
+        fitSizes,
         category,
         seasons,
         color,
@@ -307,6 +322,13 @@ export function ClothingDetailScreen({
         >
           <View style={styles.previewArea}>
             <Image source={{ uri: imageUri }} style={styles.previewImage} />
+            <Pressable
+              onPress={() => onOpenFits(item.id)}
+              style={styles.fitShortcut}
+              hitSlop={8}
+            >
+              <Text style={styles.fitShortcutText}>마이핏 보기</Text>
+            </Pressable>
           </View>
 
           <Pressable onPress={startImagePipeline} style={styles.editImageButton} hitSlop={8}>
@@ -352,6 +374,20 @@ export function ClothingDetailScreen({
           <View style={styles.formGroup}>
             <Text style={styles.label}>태그</Text>
             <TagInput tags={tags} onChange={setTags} placeholder="예: 출근룩, 빈티지" />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>핏/사이즈</Text>
+            <View style={styles.chipWrap}>
+              {fitSizeOptions.map((option) => (
+                <ChoiceChip
+                  key={option}
+                  label={option}
+                  selected={fitSizes.includes(option)}
+                  onPress={() => toggleFitSize(option)}
+                />
+              ))}
+            </View>
           </View>
 
           <View style={styles.formGroup}>
@@ -574,6 +610,18 @@ const styles = StyleSheet.create({
     height: '100%',
     resizeMode: 'contain',
   },
+  fitShortcut: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  fitShortcutText: { fontSize: 12, fontWeight: '700', color: COLORS.surface },
   editImageButton: {
     minHeight: 48,
     borderRadius: 12,

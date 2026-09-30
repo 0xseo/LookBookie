@@ -325,11 +325,31 @@ export async function declineFriendRequest(friendshipId: string) {
 
 export async function listFriendWardrobe(friendId: string): Promise<FriendWardrobeItem[]> {
   await getCloudUser();
+  return queryFriendWardrobe(friendId);
+}
+
+export async function listFriendOutfits(friendId: string): Promise<FriendOutfit[]> {
+  await getCloudUser();
+  return queryFriendOutfits(friendId);
+}
+
+export async function listFriendLibrary(friendId: string) {
+  await getCloudUser();
+
+  const [wardrobeItems, outfits] = await Promise.all([
+    queryFriendWardrobe(friendId),
+    queryFriendOutfits(friendId),
+  ]);
+
+  return { wardrobeItems, outfits };
+}
+
+async function queryFriendWardrobe(friendId: string): Promise<FriendWardrobeItem[]> {
   const client = getConfiguredSupabase();
 
   const { data, error } = await client
     .from('clothes')
-    .select('id,owner_id,remote_image_url,name,brand,tags,category,seasons,color,color_value,color_family,created_at')
+    .select('id,owner_id,remote_image_url,name,brand,tags,fit_sizes,category,seasons,color,color_value,color_family,created_at')
     .eq('owner_id', friendId)
     .order('created_at', { ascending: false });
 
@@ -344,6 +364,7 @@ export async function listFriendWardrobe(friendId: string): Promise<FriendWardro
     name: item.name,
     brand: item.brand,
     tags: Array.isArray(item.tags) ? item.tags : [],
+    fitSizes: Array.isArray(item.fit_sizes) ? item.fit_sizes : [],
     category: item.category,
     seasons: item.seasons,
     color: item.color,
@@ -353,8 +374,7 @@ export async function listFriendWardrobe(friendId: string): Promise<FriendWardro
   }));
 }
 
-export async function listFriendOutfits(friendId: string): Promise<FriendOutfit[]> {
-  await getCloudUser();
+async function queryFriendOutfits(friendId: string): Promise<FriendOutfit[]> {
   const client = getConfiguredSupabase();
 
   const { data, error } = await client
@@ -472,14 +492,18 @@ function parseFriendOutfitStickers(value: unknown): FriendOutfitSticker[] {
         color: typeof candidate.color === 'string' ? candidate.color : null,
         colorValue: typeof candidate.colorValue === 'string' ? candidate.colorValue : null,
         colorFamily: typeof candidate.colorFamily === 'string' ? candidate.colorFamily : null,
-        x: typeof candidate.x === 'number' ? candidate.x : 0,
-        y: typeof candidate.y === 'number' ? candidate.y : 0,
-        size: typeof candidate.size === 'number' ? candidate.size : 96,
-        rotation: typeof candidate.rotation === 'number' ? candidate.rotation : 0,
-        zIndex: typeof candidate.zIndex === 'number' ? candidate.zIndex : 0,
+        x: getFiniteFriendStickerNumber(candidate.x, 0),
+        y: getFiniteFriendStickerNumber(candidate.y, 0),
+        size: Math.max(1, getFiniteFriendStickerNumber(candidate.size, 96)),
+        rotation: getFiniteFriendStickerNumber(candidate.rotation, 0),
+        zIndex: getFiniteFriendStickerNumber(candidate.zIndex, 0),
       };
     })
     .filter((sticker): sticker is FriendOutfitSticker => Boolean(sticker));
+}
+
+function getFiniteFriendStickerNumber(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
 async function mapFriendRequests(

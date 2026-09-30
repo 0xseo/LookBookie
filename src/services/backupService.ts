@@ -5,8 +5,10 @@ import {
   createLocalBackupPayload,
   importLocalBackupPayload,
   listClothingItems,
+  listFitEntries,
   listOutfits,
   updateClothingItem,
+  updateFitEntry,
   updateOutfit,
 } from '../storage/database';
 import { restoreWardrobeImageFromBackup } from '../storage/imageStorage';
@@ -84,10 +86,6 @@ export async function repairStoredBackupImagePaths() {
     repairedClothesCount += 1;
   }
 
-  if (restoredImagePaths.size === 0) {
-    return repairedClothesCount;
-  }
-
   const outfits = await listOutfits();
 
   for (const outfit of outfits) {
@@ -105,6 +103,19 @@ export async function repairStoredBackupImagePaths() {
 
     if (changed) {
       await updateOutfit({ ...outfit, stickers });
+    }
+  }
+
+  const fits = await listFitEntries();
+
+  for (const fit of fits) {
+    const restoredImage = await restoreWardrobeImageFromBackup(
+      fit.localImagePath,
+      fit.remoteImageUrl,
+    );
+
+    if (restoredImage.uri && restoredImage.uri !== fit.localImagePath) {
+      await updateFitEntry({ ...fit, localImagePath: restoredImage.uri });
     }
   }
 
@@ -161,12 +172,30 @@ async function prepareBackupImages(payload: LocalBackupPayload) {
       return restoredPath ? [{ ...sticker, localImagePath: restoredPath }] : [];
     }),
   }));
+  const fits: NonNullable<LocalBackupPayload['fits']> = [];
+
+  for (const fit of payload.fits ?? []) {
+    const restoredImage = await restoreWardrobeImageFromBackup(
+      fit.localImagePath,
+      fit.remoteImageUrl,
+    );
+
+    if (!restoredImage.uri) {
+      skippedImageCount += 1;
+      continue;
+    }
+
+    if (restoredImage.source === 'downloaded') downloadedImageCount += 1;
+    if (restoredImage.source === 'remote') remoteFallbackImageCount += 1;
+    fits.push({ ...fit, localImagePath: restoredImage.uri });
+  }
 
   return {
     payload: {
       ...payload,
       clothes,
       outfits,
+      fits,
     },
     downloadedImageCount,
     remoteFallbackImageCount,

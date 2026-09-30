@@ -4,6 +4,7 @@ import { Image } from 'react-native';
 
 const WARDROBE_IMAGE_DIRECTORY = 'lookboogie-clothes';
 const EDITED_IMAGE_DIRECTORY = 'lookboogie-edits';
+const FIT_IMAGE_DIRECTORY = 'lookboogie-fits';
 const MAX_IMAGE_WIDTH = 1400;
 
 export type CropMode = 'original' | 'square' | 'portrait45' | 'portrait34';
@@ -150,6 +151,18 @@ export async function saveWardrobeImage(sourceUri: string) {
   const extension = getFileExtension(sourceUri);
   const targetFile = new File(imageDirectory, `clothing-${Date.now()}.${extension}`);
 
+  await sourceFile.copy(targetFile, { overwrite: true });
+
+  return targetFile.uri;
+}
+
+export async function saveFitImage(sourceUri: string) {
+  const imageDirectory = new Directory(Paths.document, FIT_IMAGE_DIRECTORY);
+  imageDirectory.create({ idempotent: true, intermediates: true });
+
+  const processed = await processWardrobeImage(sourceUri);
+  const sourceFile = new File(processed.uri);
+  const targetFile = new File(imageDirectory, `fit-${Date.now()}.png`);
   await sourceFile.copy(targetFile, { overwrite: true });
 
   return targetFile.uri;

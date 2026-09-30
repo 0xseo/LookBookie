@@ -3,6 +3,20 @@ import type { CloudSyncStatus } from './sync';
 export const CLOTHING_CATEGORIES = ['상의', '하의', '아우터', '신발', '악세사리', '원피스'] as const;
 export const CATEGORY_FILTERS = ['전체', ...CLOTHING_CATEGORIES] as const;
 export const SEASONS = ['봄', '여름', '가을', '겨울'] as const;
+export const DEFAULT_FIT_SIZE_OPTIONS = [
+  '오버핏',
+  '정핏',
+  '슬림핏',
+  '크롭',
+  '숏',
+  '롱',
+  '박시',
+  '테이퍼드',
+  '와이드',
+  '체형보정',
+  '부해보임',
+  '압박감',
+] as const;
 
 export const COLOR_FAMILIES = [
   'black',
@@ -60,6 +74,7 @@ export type ClothingItem = {
   name: string;
   brand: string;
   tags: string[];
+  fitSizes: string[];
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;
@@ -79,6 +94,7 @@ export type NewClothingItem = {
   name: string;
   brand: string;
   tags: string[];
+  fitSizes: string[];
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;

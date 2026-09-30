@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Modal, StatusBar, StyleSheet, View } from "react-native";
+import { BackHandler, Modal, StatusBar, StyleSheet, View } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 import {
   SafeAreaProvider,
@@ -17,16 +17,22 @@ import { ClothingDetailScreen } from "./src/screens/ClothingDetailScreen";
 import { CodiBookScreen } from "./src/screens/CodiBookScreen";
 import { FriendsScreen } from "./src/screens/FriendsScreen";
 import { MyPageScreen } from "./src/screens/MyPageScreen";
+import { MyFitScreen, type MyFitEntryPoint } from "./src/screens/MyFitScreen";
 import { WardrobeScreen } from "./src/screens/WardrobeScreen";
 import {
   countCloudPendingClothingItems,
+  countCloudPendingFitEntries,
   countOutfits,
   detachAllLocalCloudData,
   initDatabase,
   listCloudPendingClothingItems,
+  listCloudPendingFitEntries,
   listClothingItems,
+  listOutfits,
   updateClothingCloudState,
+  updateFitCloudState,
 } from "./src/storage/database";
+import { syncFitToCloud } from "./src/services/fitCloud";
 import { deleteCurrentCloudAccount } from "./src/services/accountCloud";
 import {
   getCloudErrorMessage,
@@ -73,8 +79,7 @@ import {
   ensureCurrentProfile,
   listIncomingFriendRequests,
   listFriends,
-  listFriendOutfits,
-  listFriendWardrobe,
+  listFriendLibrary,
   listOutgoingFriendRequests,
   sendFriendRequestByHandle,
   updateCurrentProfileDisplayName,
@@ -129,10 +134,24 @@ function AppContent() {
   const [selectedCategory, setSelectedCategory] =
     useState<CategoryFilter>("전체");
   const [activeTab, setActiveTab] = useState<AppTab>("wardrobe");
+  const activeTabRef = useRef<AppTab>("wardrobe");
+  activeTabRef.current = activeTab;
+  const [tabResetSignals, setTabResetSignals] = useState<Record<AppTab, number>>({
+    wardrobe: 0,
+    myFit: 0,
+    codiBook: 0,
+    friends: 0,
+    profile: 0,
+  });
   const [isAddVisible, setIsAddVisible] = useState(false);
   const [selectedWardrobeItem, setSelectedWardrobeItem] =
     useState<ClothingItem | null>(null);
   const [requestedOutfitId, setRequestedOutfitId] = useState<number | null>(null);
+  const [myFitEntryPoint, setMyFitEntryPoint] = useState<MyFitEntryPoint | null>(null);
+  const [myFitReturnSource, setMyFitReturnSource] = useState<
+    { kind: "clothing"; id: number } | { kind: "outfit"; id: number } | null
+  >(null);
+  const myFitRequestIdRef = useRef(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isDatabaseReady, setIsDatabaseReady] = useState(false);
   const [outfitsCount, setOutfitsCount] = useState(0);
@@ -161,6 +180,13 @@ function AppContent() {
   >([]);
   const [friendOutfits, setFriendOutfits] = useState<FriendOutfit[]>([]);
   const addItemScreenRef = useRef<AddItemScreenHandle>(null);
+  const friendDataCacheRef = useRef(
+    new Map<
+      string,
+      { wardrobeItems: FriendWardrobeItem[]; outfits: FriendOutfit[] }
+    >()
+  );
+  const friendLoadRequestRef = useRef(0);
   const tabBarInset = Math.max(8, insets.bottom);
   const brandSuggestions = useMemo(
     () =>
@@ -205,8 +231,11 @@ function AppContent() {
 
   const loadCloudPendingCount = useCallback(async () => {
     try {
-      const storedPendingCount = await countCloudPendingClothingItems();
-      setPendingCloudCount(storedPendingCount);
+      const [clothingCount, fitCount] = await Promise.all([
+        countCloudPendingClothingItems(),
+        countCloudPendingFitEntries(),
+      ]);
+      setPendingCloudCount(clothingCount + fitCount);
     } catch (error) {
       AppAlert.alert(
         "동기화 상태를 불러오지 못했어북",
@@ -384,6 +413,11 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
+    friendDataCacheRef.current.clear();
+    friendLoadRequestRef.current += 1;
+  }, [cloudSession?.user.id]);
+
+  useEffect(() => {
     if (!cloudSession) {
       setCurrentProfile(null);
       setFriends([]);
@@ -407,9 +441,81 @@ function AppContent() {
     prepareCloudProfile();
   }, [cloudSession, loadFriendList]);
 
-  const handleSelectCategory = (category: CategoryFilter) => {
+  const handleSelectCategory = useCallback((category: CategoryFilter) => {
     setSelectedCategory(category);
+  }, []);
+
+  const handleSelectTab = (tab: AppTab) => {
+    if (tab === activeTab) {
+      setTabResetSignals((current) => ({ ...current, [tab]: current[tab] + 1 }));
+      return;
+    }
+
+    if (tab !== "myFit") {
+      setMyFitEntryPoint(null);
+      setMyFitReturnSource(null);
+    }
+
+    setActiveTab(tab);
   };
+
+  const openMyFitsForClothing = (clothingItemId: number) => {
+    myFitRequestIdRef.current += 1;
+    setMyFitReturnSource({ kind: "clothing", id: clothingItemId });
+    setMyFitEntryPoint({
+      kind: "clothing",
+      id: clothingItemId,
+      requestId: myFitRequestIdRef.current,
+    });
+    setSelectedWardrobeItem(null);
+    setActiveTab("myFit");
+  };
+
+  const openMyFitsForOutfit = (outfitId: number) => {
+    myFitRequestIdRef.current += 1;
+    setMyFitReturnSource({ kind: "outfit", id: outfitId });
+    setMyFitEntryPoint({
+      kind: "outfit",
+      id: outfitId,
+      requestId: myFitRequestIdRef.current,
+    });
+    setActiveTab("myFit");
+  };
+
+  const returnFromMyFit = () => {
+    const source = myFitReturnSource;
+    setMyFitEntryPoint(null);
+    setMyFitReturnSource(null);
+
+    if (source?.kind === "clothing") {
+      setActiveTab("wardrobe");
+      setSelectedWardrobeItem(items.find((item) => item.id === source.id) ?? null);
+      return;
+    }
+
+    if (source?.kind === "outfit") {
+      setRequestedOutfitId(source.id);
+      setActiveTab("codiBook");
+      return;
+    }
+
+    setActiveTab("wardrobe");
+  };
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (activeTabRef.current === "wardrobe") {
+        return false;
+      }
+
+      setMyFitEntryPoint(null);
+      setMyFitReturnSource(null);
+      setActiveTab("wardrobe");
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const handleSaved = async () => {
     setIsAddVisible(false);
@@ -572,7 +678,7 @@ function AppContent() {
       AppAlert.alert(
         "탈퇴를 완료했어북",
         localDetachResult.status === "fulfilled"
-          ? "클라우드 계정은 삭제됐고 이 기기의 옷과 코디는 로컬에 남아 있어요."
+          ? "클라우드 계정은 삭제됐고 이 기기의 옷, 코디, 마이핏은 로컬에 남아 있어요."
           : "클라우드 계정은 삭제됐어요. 로컬 데이터 상태를 정리하려면 앱을 다시 열어 주세요."
       );
     } catch (error) {
@@ -655,11 +761,11 @@ function AppContent() {
       await loadCloudPendingCount();
       const skippedImageNotice =
         result.skippedImageCount > 0
-          ? `\n사진 원본과 클라우드 URL이 없는 옷 ${result.skippedImageCount}개는 제외했어요.`
+          ? `\n사진 원본과 클라우드 URL이 없는 항목 ${result.skippedImageCount}개는 제외했어요.`
           : "";
       AppAlert.alert(
         "백업을 가져왔어북",
-        `옷 ${result.clothesCount}개와 코디 ${result.outfitsCount}개를 추가했어요.${skippedImageNotice}`
+        `옷 ${result.clothesCount}개, 코디 ${result.outfitsCount}개, 마이핏 ${result.fitsCount}개를 추가했어요.${skippedImageNotice}`
       );
     } catch (error) {
       AppAlert.alert(
@@ -715,21 +821,37 @@ function AppContent() {
   };
 
   const handleSelectFriend = async (friend: FriendProfile) => {
+    const requestId = friendLoadRequestRef.current + 1;
+    friendLoadRequestRef.current = requestId;
+    const cachedData = friendDataCacheRef.current.get(friend.id);
+
     setIsFriendBusy(true);
     setSelectedFriend(friend);
 
-    try {
-      const [wardrobeItems, outfits] = await Promise.all([
-        listFriendWardrobe(friend.id),
-        listFriendOutfits(friend.id),
-      ]);
+    if (cachedData) {
+      setFriendWardrobeItems(cachedData.wardrobeItems);
+      setFriendOutfits(cachedData.outfits);
+    } else {
+      setFriendWardrobeItems([]);
+      setFriendOutfits([]);
+    }
 
+    try {
+      const { wardrobeItems, outfits } = await listFriendLibrary(friend.id);
+
+      if (friendLoadRequestRef.current !== requestId) {
+        return;
+      }
+
+      friendDataCacheRef.current.set(friend.id, { wardrobeItems, outfits });
       setFriendWardrobeItems(wardrobeItems);
       setFriendOutfits(outfits);
     } catch (error) {
       showCloudRequestError("친구 데이터를 불러오지 못했어북", error);
     } finally {
-      setIsFriendBusy(false);
+      if (friendLoadRequestRef.current === requestId) {
+        setIsFriendBusy(false);
+      }
     }
   };
 
@@ -741,11 +863,13 @@ function AppContent() {
     }
   };
 
-  const handleCloseFriend = () => {
+  const handleCloseFriend = useCallback(() => {
+    friendLoadRequestRef.current += 1;
+    setIsFriendBusy(false);
     setSelectedFriend(null);
     setFriendWardrobeItems([]);
     setFriendOutfits([]);
-  };
+  }, []);
 
   const handleSyncPending = async () => {
     if (!isSupabaseConfigured) {
@@ -768,7 +892,10 @@ function AppContent() {
 
     try {
       const pendingItems = await listCloudPendingClothingItems();
+      const pendingFits = await listCloudPendingFitEntries();
+      const storedOutfits = await listOutfits();
       let syncedCount = 0;
+      let unavailableError: unknown = null;
 
       for (const item of pendingItems) {
         const cloudState = await syncClothingItemUpdateToCloud(item, false);
@@ -777,14 +904,51 @@ function AppContent() {
           syncedCount += 1;
         }
 
+        if (
+          cloudState.cloudError &&
+          isLikelySupabaseUnavailableError(cloudState.cloudError)
+        ) {
+          unavailableError = cloudState.cloudError;
+        }
+
         await updateClothingCloudState(item.id, cloudState);
+      }
+
+      const syncedClothingItems = await listClothingItems("전체");
+
+      for (const fit of pendingFits) {
+        const cloudState = await syncFitToCloud(
+          fit,
+          syncedClothingItems,
+          storedOutfits,
+          false
+        );
+
+        if (cloudState.cloudSyncStatus === "synced") {
+          syncedCount += 1;
+        }
+
+        if (
+          cloudState.cloudError &&
+          isLikelySupabaseUnavailableError(cloudState.cloudError)
+        ) {
+          unavailableError = cloudState.cloudError;
+        }
+
+        await updateFitCloudState(fit.id, cloudState);
       }
 
       await loadItems();
       await loadCloudPendingCount();
+
+      if (unavailableError) {
+        showCloudRequestError("동기화에 실패했어북", unavailableError);
+        return;
+      }
+
       AppAlert.alert(
         "동기화 완료북",
-        `${syncedCount}개의 옷을 클라우드에 올렸어요.`
+        `${syncedCount}개의 옷과 마이핏 항목을 클라우드에 올렸어요.`
       );
     } catch (error) {
       showCloudRequestError("동기화에 실패했어북", error);
@@ -806,6 +970,24 @@ function AppContent() {
           onItemPress={setSelectedWardrobeItem}
           onAddPress={() => setIsAddVisible(true)}
           onRefresh={handleWardrobeRefresh}
+          resetSignal={tabResetSignals.wardrobe}
+        />
+      ) : null}
+
+      {activeTab === "myFit" ? (
+        <MyFitScreen
+          items={items}
+          bottomInset={tabBarInset}
+          resetSignal={tabResetSignals.myFit}
+          entryPoint={myFitEntryPoint}
+          onEntryPointHandled={() => setMyFitEntryPoint(null)}
+          onReturnToSource={returnFromMyFit}
+          onOpenClothingItem={setSelectedWardrobeItem}
+          onOpenOutfit={(outfitId) => {
+            setRequestedOutfitId(outfitId);
+            setActiveTab("codiBook");
+          }}
+          onChanged={loadCloudPendingCount}
         />
       ) : null}
 
@@ -819,6 +1001,8 @@ function AppContent() {
           onOpenWardrobe={() => setActiveTab("wardrobe")}
           onOpenClothingItem={setSelectedWardrobeItem}
           onRequestedOutfitOpened={() => setRequestedOutfitId(null)}
+          resetSignal={tabResetSignals.codiBook}
+          onOpenFits={openMyFitsForOutfit}
         />
       ) : null}
 
@@ -846,6 +1030,7 @@ function AppContent() {
           onExportBackup={handleExportBackup}
           onImportBackup={handleImportBackup}
           onCategoriesChanged={handleCategoriesChanged}
+          resetSignal={tabResetSignals.profile}
         />
       ) : null}
 
@@ -868,13 +1053,14 @@ function AppContent() {
           onCloseFriend={handleCloseFriend}
           onRefresh={handleFriendsRefresh}
           onOpenProfile={() => setActiveTab("profile")}
+          resetSignal={tabResetSignals.friends}
         />
       ) : null}
 
       <BottomTabs
         activeTab={activeTab}
         bottomInset={insets.bottom}
-        onSelectTab={setActiveTab}
+        onSelectTab={handleSelectTab}
       />
 
       <Modal
@@ -909,6 +1095,7 @@ function AppContent() {
               setRequestedOutfitId(outfitId);
               setActiveTab("codiBook");
             }}
+            onOpenFits={openMyFitsForClothing}
           />
         ) : null}
       </Modal>

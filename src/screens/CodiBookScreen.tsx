@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   ActivityIndicator,
   Animated,
   BackHandler,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   PanResponder,
   Platform,
@@ -15,6 +16,7 @@ import {
   TextInput,
   useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -31,6 +33,7 @@ import {
 
 import { COLORS } from "../../constants/colors";
 import { AppAlert } from "../components/AppDialog";
+import { MyFitIcon } from "../components/MyFitIcon";
 import { TagInput } from "../components/TagInput";
 import {
   deleteOutfitFromCloud,
@@ -64,6 +67,8 @@ type CodiBookScreenProps = {
   onOpenWardrobe: () => void;
   onOpenClothingItem: (item: ClothingItem) => void;
   onRequestedOutfitOpened: () => void;
+  resetSignal: number;
+  onOpenFits: (outfitId: number) => void;
 };
 
 type CanvasSize = {
@@ -113,6 +118,8 @@ export function CodiBookScreen({
   onOpenWardrobe,
   onOpenClothingItem,
   onRequestedOutfitOpened,
+  resetSignal,
+  onOpenFits,
 }: CodiBookScreenProps) {
   const { width } = useWindowDimensions();
   const [mode, setMode] = useState<CodiMode>("list");
@@ -130,12 +137,16 @@ export function CodiBookScreen({
     width: 0,
     height: 0,
   });
+  const pendingCanvasRestoreRef = useRef<{
+    sourceSize: CanvasSize | null;
+  } | null>(null);
   const [outfits, setOutfits] = useState<Outfit[]>([]);
   const [outfitQuery, setOutfitQuery] = useState("");
   const [pickerCategory, setPickerCategory] = useState<CategoryFilter>("전체");
   const [pickerQuery, setPickerQuery] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const outfitListRef = useRef<FlatList<Outfit>>(null);
   const { colorOptions } = useColorPaletteOptions();
   const { categoryOptions } = useCategoryOptions();
   const categoryFilters: CategoryFilter[] = ["전체", ...categoryOptions];
@@ -194,6 +205,15 @@ export function CodiBookScreen({
   }, [loadSavedOutfits]);
 
   useEffect(() => {
+    setMode("list");
+    setOutfitQuery("");
+    setSelectedStickerId(null);
+    requestAnimationFrame(() =>
+      outfitListRef.current?.scrollToOffset({ offset: 0, animated: true })
+    );
+  }, [resetSignal]);
+
+  useEffect(() => {
     if (pickerCategory !== "전체" && !categoryOptions.includes(pickerCategory)) {
       setPickerCategory("전체");
     }
@@ -216,11 +236,13 @@ export function CodiBookScreen({
   }, [mode]);
 
   const openNewPicker = () => {
+    pendingCanvasRestoreRef.current = null;
     setEditingOutfitId(null);
     setEditingOutfitName("");
     setEditingOutfitSeasons([]);
     setEditingOutfitTags([]);
     setStickers([]);
+    setCanvasSize({ width: 0, height: 0 });
     setSelectedStickerId(null);
     setPickerCategory("전체");
     setPickerQuery("");
@@ -228,30 +250,94 @@ export function CodiBookScreen({
   };
 
   const openOutfit = useCallback((outfit: Outfit) => {
-    const restoredStickers = outfit.stickers.map((sticker, index) => {
-      const wardrobeItem = wardrobeItemsById.get(sticker.clothingItemId);
+    const restoredStickers = normalizeStickerLayers(
+      outfit.stickers.map((sticker, index) => {
+        const wardrobeItem = wardrobeItemsById.get(sticker.clothingItemId);
 
-      return {
-        ...sticker,
-        id: `outfit-${outfit.id}-${index}-${Date.now()}`,
-        remoteImageUrl: wardrobeItem?.remoteImageUrl ?? sticker.remoteImageUrl ?? null,
-        name: wardrobeItem?.name ?? sticker.name ?? "",
-        brand: wardrobeItem?.brand ?? sticker.brand ?? "",
-        category: wardrobeItem?.category ?? sticker.category ?? null,
-        zIndex: index + 1,
-      };
-    });
+        return {
+          ...sticker,
+          id: `outfit-${outfit.id}-${index}-${Date.now()}`,
+          remoteImageUrl:
+            wardrobeItem?.remoteImageUrl ?? sticker.remoteImageUrl ?? null,
+          name: wardrobeItem?.name ?? sticker.name ?? "",
+          brand: wardrobeItem?.brand ?? sticker.brand ?? "",
+          category: wardrobeItem?.category ?? sticker.category ?? null,
+        };
+      })
+    );
+
+    pendingCanvasRestoreRef.current = {
+      sourceSize: getValidCanvasSize(outfit.canvasWidth, outfit.canvasHeight),
+    };
 
     setEditingOutfitId(outfit.id);
     setEditingOutfitName(outfit.name);
     setEditingOutfitSeasons(outfit.seasons);
     setEditingOutfitTags(outfit.tags);
     setStickers(restoredStickers);
+    setCanvasSize({ width: 0, height: 0 });
     setSelectedStickerId(
       restoredStickers[restoredStickers.length - 1]?.id ?? null
     );
     setMode("canvas");
   }, [wardrobeItemsById]);
+
+  const handleCanvasLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const nextCanvasSize = getValidCanvasSize(
+        event.nativeEvent.layout.width,
+        event.nativeEvent.layout.height
+      );
+
+      if (!nextCanvasSize) {
+        return;
+      }
+
+      const pendingRestore = pendingCanvasRestoreRef.current;
+
+      if (pendingRestore) {
+        pendingCanvasRestoreRef.current = null;
+        setCanvasSize(nextCanvasSize);
+        setStickers((current) => {
+          const savedBounds = getStickerBounds(current);
+          const canUseSavedCanvas =
+            pendingRestore.sourceSize &&
+            (!savedBounds ||
+              stickerBoundsFitCanvas(savedBounds, pendingRestore.sourceSize));
+
+          return canUseSavedCanvas && pendingRestore.sourceSize
+            ? remapStickersBetweenCanvases(
+                current,
+                pendingRestore.sourceSize,
+                nextCanvasSize
+              )
+            : fitStickersWithinCanvas(current, nextCanvasSize);
+        });
+        return;
+      }
+
+      if (!isValidCanvasSize(canvasSize)) {
+        setCanvasSize(nextCanvasSize);
+        setStickers((current) =>
+          constrainStickersToCanvas(current, nextCanvasSize)
+        );
+        return;
+      }
+
+      if (
+        Keyboard.isVisible() ||
+        areCanvasSizesEqual(canvasSize, nextCanvasSize)
+      ) {
+        return;
+      }
+
+      setStickers((current) =>
+        remapStickersBetweenCanvases(current, canvasSize, nextCanvasSize)
+      );
+      setCanvasSize(nextCanvasSize);
+    },
+    [canvasSize]
+  );
 
   useEffect(() => {
     if (!requestedOutfitId || outfits.length === 0) {
@@ -347,9 +433,19 @@ export function CodiBookScreen({
       const existingOutfit = editingOutfitId
         ? outfits.find((outfit) => outfit.id === editingOutfitId) ?? null
         : null;
-      const canvasWidth = canvasSize.width || null;
-      const canvasHeight = canvasSize.height || null;
+      const savedCanvasSize = isValidCanvasSize(canvasSize)
+        ? canvasSize
+        : null;
+      const persistedStickers = normalizeStickerLayers(
+        savedCanvasSize
+          ? constrainStickersToCanvas(stickers, savedCanvasSize)
+          : stickers
+      );
+      const canvasWidth = savedCanvasSize?.width ?? null;
+      const canvasHeight = savedCanvasSize?.height ?? null;
       let localOutfitId: number;
+
+      setStickers(persistedStickers);
 
       if (existingOutfit) {
         await updateOutfit({
@@ -357,7 +453,7 @@ export function CodiBookScreen({
           name: outfitName,
           seasons: editingOutfitSeasons,
           tags: editingOutfitTags,
-          stickers,
+          stickers: persistedStickers,
           canvasWidth,
           canvasHeight,
           cloudSyncStatus: existingOutfit.remoteRecordId ? "pending" : existingOutfit.cloudSyncStatus,
@@ -370,7 +466,7 @@ export function CodiBookScreen({
           name: outfitName,
           seasons: editingOutfitSeasons,
           tags: editingOutfitTags,
-          stickers,
+          stickers: persistedStickers,
           canvasWidth,
           canvasHeight,
         });
@@ -381,7 +477,7 @@ export function CodiBookScreen({
         name: outfitName,
         seasons: editingOutfitSeasons,
         tags: editingOutfitTags,
-        stickers,
+        stickers: persistedStickers,
         wardrobeItems: items,
         canvasWidth,
         canvasHeight,
@@ -537,6 +633,7 @@ export function CodiBookScreen({
               </View>
             ) : null}
             <OutfitList
+              listRef={outfitListRef}
               outfits={visibleOutfits}
               tileSize={tileSize}
               bottomInset={bottomInset}
@@ -725,6 +822,21 @@ export function CodiBookScreen({
               >
                 <Plus color={COLORS.surface} size={24} strokeWidth={2.6} />
               </Pressable>
+              {editingOutfitId ? (
+                <Pressable
+                  onPress={() => onOpenFits(editingOutfitId)}
+                  style={styles.canvasIconButtonSecondary}
+                  accessibilityLabel="이 코디의 마이핏 보기"
+                  hitSlop={8}
+                >
+                  <MyFitIcon
+                    color={COLORS.primary}
+                    size={22}
+                    strokeWidth={2.3}
+                    backdropColor={COLORS.secondary}
+                  />
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={bringSelectedForward}
                 disabled={!selectedSticker}
@@ -740,12 +852,7 @@ export function CodiBookScreen({
 
             <View
               style={styles.canvas}
-              onLayout={(event) => {
-                setCanvasSize({
-                  width: event.nativeEvent.layout.width,
-                  height: event.nativeEvent.layout.height,
-                });
-              }}
+              onLayout={handleCanvasLayout}
             >
               {stickers.length > 0 ? (
                 <Pressable
@@ -803,6 +910,7 @@ export function CodiBookScreen({
 }
 
 type OutfitListProps = {
+  listRef: RefObject<FlatList<Outfit> | null>;
   outfits: Outfit[];
   tileSize: number;
   bottomInset: number;
@@ -813,6 +921,7 @@ type OutfitListProps = {
 };
 
 function OutfitList({
+  listRef,
   outfits,
   tileSize,
   bottomInset,
@@ -823,6 +932,7 @@ function OutfitList({
 }: OutfitListProps) {
   return (
     <FlatList
+      ref={listRef}
       data={outfits}
       refreshing={refreshing}
       onRefresh={onRefresh}
@@ -1058,39 +1168,31 @@ function getPreviewLayout(
   canvasHeight: number | null,
   previewSize: number
 ) {
-  if (canvasWidth && canvasHeight) {
+  const savedCanvasSize = getValidCanvasSize(canvasWidth, canvasHeight);
+  const bounds = getStickerBounds(stickers);
+
+  if (
+    savedCanvasSize &&
+    (!bounds || stickerBoundsFitCanvas(bounds, savedCanvasSize))
+  ) {
     const scale = Math.min(
-      previewSize / canvasWidth,
-      previewSize / canvasHeight
+      previewSize / savedCanvasSize.width,
+      previewSize / savedCanvasSize.height
     );
 
     return {
       minX: 0,
       minY: 0,
-      offsetX: (previewSize - canvasWidth * scale) / 2,
-      offsetY: (previewSize - canvasHeight * scale) / 2,
+      offsetX: (previewSize - savedCanvasSize.width * scale) / 2,
+      offsetY: (previewSize - savedCanvasSize.height * scale) / 2,
       scale,
     };
   }
 
-  if (stickers.length === 0) {
+  if (!bounds) {
     return { minX: 0, minY: 0, offsetX: 0, offsetY: 0, scale: 1 };
   }
 
-  const bounds = stickers.reduce(
-    (current, sticker) => ({
-      minX: Math.min(current.minX, sticker.x),
-      minY: Math.min(current.minY, sticker.y),
-      maxX: Math.max(current.maxX, sticker.x + sticker.size),
-      maxY: Math.max(current.maxY, sticker.y + sticker.size),
-    }),
-    {
-      minX: Number.POSITIVE_INFINITY,
-      minY: Number.POSITIVE_INFINITY,
-      maxX: 0,
-      maxY: 0,
-    }
-  );
   const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
   const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
   const inset = 12;
@@ -1106,6 +1208,176 @@ function getPreviewLayout(
     offsetY: (previewSize - contentHeight * scale) / 2,
     scale,
   };
+}
+
+function getValidCanvasSize(
+  width: number | null | undefined,
+  height: number | null | undefined
+): CanvasSize | null {
+  if (
+    typeof width !== "number" ||
+    typeof height !== "number" ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return null;
+  }
+
+  return { width, height };
+}
+
+function isValidCanvasSize(size: CanvasSize | null): size is CanvasSize {
+  return Boolean(getValidCanvasSize(size?.width, size?.height));
+}
+
+function areCanvasSizesEqual(first: CanvasSize, second: CanvasSize) {
+  return (
+    Math.abs(first.width - second.width) < 0.5 &&
+    Math.abs(first.height - second.height) < 0.5
+  );
+}
+
+function normalizeStickerLayers(stickers: OutfitSticker[]) {
+  return stickers
+    .map((sticker, index) => ({
+      sticker,
+      index,
+      layer: Number.isFinite(sticker.zIndex) ? sticker.zIndex : index + 1,
+    }))
+    .sort((first, second) =>
+      first.layer === second.layer
+        ? first.index - second.index
+        : first.layer - second.layer
+    )
+    .map(({ sticker }, index) => ({ ...sticker, zIndex: index + 1 }));
+}
+
+function constrainStickersToCanvas(
+  stickers: OutfitSticker[],
+  canvas: CanvasSize
+) {
+  const maxSize = Math.max(1, Math.min(canvas.width, canvas.height));
+  const minSize = Math.min(MIN_STICKER_SIZE, maxSize);
+
+  return stickers.map((sticker) => {
+    const size = clamp(
+      Number.isFinite(sticker.size) ? sticker.size : DEFAULT_STICKER_SIZE,
+      minSize,
+      maxSize
+    );
+    const x = Number.isFinite(sticker.x) ? sticker.x : 0;
+    const y = Number.isFinite(sticker.y) ? sticker.y : 0;
+
+    return {
+      ...sticker,
+      x: clamp(x, 0, Math.max(0, canvas.width - size)),
+      y: clamp(y, 0, Math.max(0, canvas.height - size)),
+      size,
+      rotation: Number.isFinite(sticker.rotation) ? sticker.rotation : 0,
+    };
+  });
+}
+
+function remapStickersBetweenCanvases(
+  stickers: OutfitSticker[],
+  source: CanvasSize,
+  target: CanvasSize
+) {
+  const scale = Math.min(
+    target.width / source.width,
+    target.height / source.height
+  );
+  const offsetX = (target.width - source.width * scale) / 2;
+  const offsetY = (target.height - source.height * scale) / 2;
+  const remapped = stickers.map((sticker) => ({
+    ...sticker,
+    x: offsetX + (Number.isFinite(sticker.x) ? sticker.x : 0) * scale,
+    y: offsetY + (Number.isFinite(sticker.y) ? sticker.y : 0) * scale,
+    size:
+      (Number.isFinite(sticker.size) ? sticker.size : DEFAULT_STICKER_SIZE) *
+      scale,
+  }));
+
+  return constrainStickersToCanvas(remapped, target);
+}
+
+function fitStickersWithinCanvas(
+  stickers: OutfitSticker[],
+  target: CanvasSize
+) {
+  const bounds = getStickerBounds(stickers);
+
+  if (!bounds) {
+    return [];
+  }
+
+  const inset = Math.min(16, target.width / 10, target.height / 10);
+  const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const scale = Math.min(
+    1,
+    Math.max(0.01, (target.width - inset * 2) / contentWidth),
+    Math.max(0.01, (target.height - inset * 2) / contentHeight)
+  );
+  const offsetX = (target.width - contentWidth * scale) / 2;
+  const offsetY = (target.height - contentHeight * scale) / 2;
+  const fitted = stickers.map((sticker) => ({
+    ...sticker,
+    x: offsetX + (sticker.x - bounds.minX) * scale,
+    y: offsetY + (sticker.y - bounds.minY) * scale,
+    size: sticker.size * scale,
+  }));
+
+  return constrainStickersToCanvas(fitted, target);
+}
+
+type StickerBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+function getStickerBounds(stickers: OutfitSticker[]): StickerBounds | null {
+  const validStickers = stickers.filter(
+    (sticker) =>
+      Number.isFinite(sticker.x) &&
+      Number.isFinite(sticker.y) &&
+      Number.isFinite(sticker.size) &&
+      sticker.size > 0
+  );
+
+  if (validStickers.length === 0) {
+    return null;
+  }
+
+  return validStickers.reduce<StickerBounds>(
+    (current, sticker) => ({
+      minX: Math.min(current.minX, sticker.x),
+      minY: Math.min(current.minY, sticker.y),
+      maxX: Math.max(current.maxX, sticker.x + sticker.size),
+      maxY: Math.max(current.maxY, sticker.y + sticker.size),
+    }),
+    {
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+    }
+  );
+}
+
+function stickerBoundsFitCanvas(bounds: StickerBounds, canvas: CanvasSize) {
+  const tolerance = 1;
+
+  return (
+    bounds.minX >= -tolerance &&
+    bounds.minY >= -tolerance &&
+    bounds.maxX <= canvas.width + tolerance &&
+    bounds.maxY <= canvas.height + tolerance
+  );
 }
 
 type CanvasStickerProps = {
@@ -1938,6 +2210,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.primary,
+  },
+  canvasIconButtonSecondary: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.secondary,
   },
   canvasMetaPanel: {
     paddingHorizontal: 16,

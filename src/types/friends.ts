@@ -25,6 +25,7 @@ export type FriendWardrobeItem = {
   name: string | null;
   brand: string | null;
   tags: string[];
+  fitSizes: string[];
   category: ClothingCategory;
   seasons: Season[];
   color: ClothingColor;

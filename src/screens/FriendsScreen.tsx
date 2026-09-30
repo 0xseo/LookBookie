@@ -6,10 +6,11 @@ import {
   Turtle,
   X,
 } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -56,6 +57,7 @@ type FriendsScreenProps = {
   onCloseFriend: () => void;
   onRefresh: () => Promise<void>;
   onOpenProfile: () => void;
+  resetSignal: number;
 };
 
 type FriendViewMode = "wardrobe" | "outfits";
@@ -82,6 +84,7 @@ export function FriendsScreen({
   onCloseFriend,
   onRefresh,
   onOpenProfile,
+  resetSignal,
 }: FriendsScreenProps) {
   const { width } = useWindowDimensions();
   const [friendIdentifier, setFriendIdentifier] = useState("");
@@ -94,6 +97,7 @@ export function FriendsScreen({
     useState<CategoryFilter>("전체");
   const { colorOptions } = useColorPaletteOptions();
   const keyboardHeight = useKeyboardHeight();
+  const rootScrollRef = useRef<ScrollView>(null);
   const categoryFilters: CategoryFilter[] = [
     "전체",
     ...Array.from(new Set(friendWardrobeItems.map((item) => item.category))),
@@ -154,12 +158,12 @@ export function FriendsScreen({
     setFriendIdentifier("");
   };
 
-  const openFriend = async (friend: FriendProfile) => {
+  const openFriend = (friend: FriendProfile) => {
     setMode("wardrobe");
     setSearchQuery("");
     setSelectedCategory("전체");
-    await onSelectFriend(friend);
     setDetailVisible(true);
+    void onSelectFriend(friend);
   };
 
   const refreshFriends = async () => {
@@ -192,6 +196,15 @@ export function FriendsScreen({
 
     return () => subscription.remove();
   }, [detailVisible, onCloseFriend]);
+
+  useEffect(() => {
+    setDetailVisible(false);
+    setMode("wardrobe");
+    setSearchQuery("");
+    setSelectedCategory("전체");
+    onCloseFriend();
+    requestAnimationFrame(() => rootScrollRef.current?.scrollTo({ y: 0, animated: true }));
+  }, [onCloseFriend, resetSignal]);
 
   if (detailVisible && selectedFriend) {
     return (
@@ -257,94 +270,66 @@ export function FriendsScreen({
             />
           </View>
 
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={[
-              styles.detailContent,
-              { paddingBottom: bottomInset + 24 + keyboardHeight },
-            ]}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            automaticallyAdjustKeyboardInsets
-            refreshControl={
-              <RefreshControl
-                refreshing={isFriendBusy || isRefreshing}
-                onRefresh={refreshFriends}
-                tintColor={COLORS.primary}
-                colors={[COLORS.primary]}
-              />
-            }
-          >
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder={
-                mode === "wardrobe"
-                  ? "이름, 브랜드, 계절, 색 검색"
-                  : "코디 이름, 계절, 옷 정보 검색"
-              }
-              placeholderTextColor={COLORS.textSecondary}
-              style={styles.searchInput}
-              returnKeyType="search"
-            />
+          {mode === "wardrobe" ? (
+            <FlatList
+              key="friend-wardrobe"
+              data={visibleWardrobeItems}
+              keyExtractor={(item) => item.id}
+              numColumns={GRID_COLUMNS}
+              columnWrapperStyle={styles.detailGridRow}
+              style={styles.scrollView}
+              contentContainerStyle={[
+                styles.detailListContent,
+                { paddingBottom: bottomInset + 24 + keyboardHeight },
+                visibleWardrobeItems.length === 0 &&
+                  styles.detailEmptyListContent,
+              ]}
+              ListHeaderComponent={
+                <View style={styles.detailListHeader}>
+                  <TextInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="이름, 브랜드, 계절, 색 검색"
+                    placeholderTextColor={COLORS.textSecondary}
+                    style={styles.searchInput}
+                    returnKeyType="search"
+                  />
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.filterScroll}
+                    contentContainerStyle={styles.filterContent}
+                  >
+                    {categoryFilters.map((category) => {
+                      const selected = selectedCategory === category;
 
-            {mode === "wardrobe" ? (
-              <>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.filterScroll}
-                  contentContainerStyle={styles.filterContent}
-                >
-                  {categoryFilters.map((category) => {
-                    const selected = selectedCategory === category;
-
-                    return (
-                      <Pressable
-                        key={category}
-                        onPress={() => setSelectedCategory(category)}
-                        style={[
-                          styles.categoryChip,
-                          selected && styles.categoryChipSelected,
-                        ]}
-                        hitSlop={8}
-                      >
-                        <Text
+                      return (
+                        <Pressable
+                          key={category}
+                          onPress={() => setSelectedCategory(category)}
                           style={[
-                            styles.categoryChipText,
-                            selected && styles.categoryChipTextSelected,
+                            styles.categoryChip,
+                            selected && styles.categoryChipSelected,
                           ]}
+                          hitSlop={8}
                         >
-                          {category}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
-                {visibleWardrobeItems.length > 0 ? (
-                  <View style={styles.grid}>
-                    {visibleWardrobeItems.map((item) => (
-                      <View
-                        key={item.id}
-                        style={[styles.wardrobeCard, { width: tileSize }]}
-                      >
-                        <View style={styles.imageFrame}>
-                          <Image
-                            source={{ uri: item.remoteImageUrl }}
-                            style={styles.cardImage}
-                          />
-                        </View>
-                        <View style={styles.cardLabelRow}>
-                          <Text style={styles.cardName} numberOfLines={1}>
-                            {item.name || item.category}
+                          <Text
+                            style={[
+                              styles.categoryChipText,
+                              selected && styles.categoryChipTextSelected,
+                            ]}
+                          >
+                            {category}
                           </Text>
-                          <Text style={styles.cardBrand} numberOfLines={1}>
-                            {item.brand || "브랜드 없음"}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              }
+              ListEmptyComponent={
+                isFriendBusy ? (
+                  <FriendDetailLoading />
                 ) : (
                   <EmptyState
                     text={
@@ -353,52 +338,111 @@ export function FriendsScreen({
                         : "친구 옷장이 비어있어북"
                     }
                   />
-                )}
-              </>
-            ) : visibleOutfits.length > 0 ? (
-              <View style={styles.grid}>
-                {visibleOutfits.map((outfit) => (
-                  <View
-                    key={outfit.id}
-                    style={[styles.outfitCard, { width: tileSize }]}
-                  >
-                    <FriendOutfitPreview
-                      stickers={outfit.stickers}
-                      canvasWidth={outfit.canvasWidth}
-                      canvasHeight={outfit.canvasHeight}
-                      previewSize={tileSize}
-                    />
-                    <View style={styles.outfitLabelRow}>
-                      <Text style={styles.outfitName} numberOfLines={1}>
-                        {outfit.name}
-                      </Text>
-                      <Text style={styles.outfitMeta}>
-                        {outfit.stickers.length}개
-                      </Text>
-                      {outfit.seasons.length > 0 ? (
-                        <Text style={styles.outfitSeasons} numberOfLines={1}>
-                          {outfit.seasons.join(" · ")}
-                        </Text>
-                      ) : null}
-                      {outfit.tags.length > 0 ? (
-                        <Text style={styles.outfitTags} numberOfLines={1}>
-                          {outfit.tags.map((tag) => `#${tag}`).join(" ")}
-                        </Text>
-                      ) : null}
-                    </View>
+                )
+              }
+              renderItem={({ item }) => (
+                <View style={[styles.wardrobeCard, { width: tileSize }]}>
+                  <View style={styles.imageFrame}>
+                    <FriendWardrobeImage uri={item.remoteImageUrl} />
                   </View>
-                ))}
-              </View>
-            ) : (
-              <EmptyState
-                text={
-                  searchQuery
-                    ? "검색 결과가 없어북"
-                    : "친구 코디북이 비어있어북"
-                }
-              />
-            )}
-          </ScrollView>
+                  <View style={styles.cardLabelRow}>
+                    <Text style={styles.cardName} numberOfLines={1}>
+                      {item.name || item.category}
+                    </Text>
+                    <Text style={styles.cardBrand} numberOfLines={1}>
+                      {item.brand || "브랜드 없음"}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              refreshing={isFriendBusy || isRefreshing}
+              onRefresh={refreshFriends}
+              initialNumToRender={6}
+              maxToRenderPerBatch={6}
+              windowSize={5}
+              removeClippedSubviews={Platform.OS === "android"}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              automaticallyAdjustKeyboardInsets
+            />
+          ) : (
+            <FlatList
+              key="friend-outfits"
+              data={visibleOutfits}
+              keyExtractor={(outfit) => outfit.id}
+              numColumns={GRID_COLUMNS}
+              columnWrapperStyle={styles.detailGridRow}
+              style={styles.scrollView}
+              contentContainerStyle={[
+                styles.detailListContent,
+                { paddingBottom: bottomInset + 24 + keyboardHeight },
+                visibleOutfits.length === 0 &&
+                  styles.detailEmptyListContent,
+              ]}
+              ListHeaderComponent={
+                <View style={styles.detailListHeader}>
+                  <TextInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="코디 이름, 계절, 옷 정보 검색"
+                    placeholderTextColor={COLORS.textSecondary}
+                    style={styles.searchInput}
+                    returnKeyType="search"
+                  />
+                </View>
+              }
+              ListEmptyComponent={
+                isFriendBusy ? (
+                  <FriendDetailLoading />
+                ) : (
+                  <EmptyState
+                    text={
+                      searchQuery
+                        ? "검색 결과가 없어북"
+                        : "친구 코디북이 비어있어북"
+                    }
+                  />
+                )
+              }
+              renderItem={({ item: outfit }) => (
+                <View style={[styles.outfitCard, { width: tileSize }]}>
+                  <FriendOutfitPreview
+                    stickers={outfit.stickers}
+                    canvasWidth={outfit.canvasWidth}
+                    canvasHeight={outfit.canvasHeight}
+                    previewSize={tileSize}
+                  />
+                  <View style={styles.outfitLabelRow}>
+                    <Text style={styles.outfitName} numberOfLines={1}>
+                      {outfit.name}
+                    </Text>
+                    <Text style={styles.outfitMeta}>
+                      {outfit.stickers.length}개
+                    </Text>
+                    {outfit.seasons.length > 0 ? (
+                      <Text style={styles.outfitSeasons} numberOfLines={1}>
+                        {outfit.seasons.join(" · ")}
+                      </Text>
+                    ) : null}
+                    {outfit.tags.length > 0 ? (
+                      <Text style={styles.outfitTags} numberOfLines={1}>
+                        {outfit.tags.map((tag) => `#${tag}`).join(" ")}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              )}
+              refreshing={isFriendBusy || isRefreshing}
+              onRefresh={refreshFriends}
+              initialNumToRender={6}
+              maxToRenderPerBatch={6}
+              windowSize={5}
+              removeClippedSubviews={Platform.OS === "android"}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              automaticallyAdjustKeyboardInsets
+            />
+          )}
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
@@ -411,6 +455,7 @@ export function FriendsScreen({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
+          ref={rootScrollRef}
           style={styles.scrollView}
           contentContainerStyle={[
             styles.container,
@@ -673,6 +718,40 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
+function FriendDetailLoading() {
+  return (
+    <View style={styles.detailLoading}>
+      <ActivityIndicator color={COLORS.primary} />
+      <Text style={styles.detailLoadingText}>친구 데이터를 불러오는 중이에요</Text>
+    </View>
+  );
+}
+
+function FriendWardrobeImage({ uri }: { uri: string }) {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => setLoading(true), [uri]);
+
+  return (
+    <View style={styles.friendImageLoader}>
+      {loading ? (
+        <ActivityIndicator
+          color={COLORS.primaryLight}
+          size="small"
+          style={styles.friendImageSpinner}
+        />
+      ) : null}
+      <Image
+        source={{ uri }}
+        style={styles.cardImage}
+        fadeDuration={100}
+        onLoadEnd={() => setLoading(false)}
+        onError={() => setLoading(false)}
+      />
+    </View>
+  );
+}
+
 function FriendOutfitPreview({
   stickers,
   canvasWidth,
@@ -684,8 +763,9 @@ function FriendOutfitPreview({
   canvasHeight: number | null;
   previewSize: number;
 }) {
+  const visibleStickers = stickers.filter((sticker) => sticker.remoteImageUrl);
   const layout = getFriendPreviewLayout(
-    stickers,
+    visibleStickers,
     canvasWidth,
     canvasHeight,
     previewSize
@@ -698,14 +778,14 @@ function FriendOutfitPreview({
         { width: previewSize, height: previewSize },
       ]}
     >
-      {stickers
-        .filter((sticker) => sticker.remoteImageUrl)
+      {visibleStickers
         .slice()
         .sort((first, second) => first.zIndex - second.zIndex)
         .map((sticker, index) => (
           <Image
             key={`${sticker.remoteImageUrl}-${index}`}
             source={{ uri: sticker.remoteImageUrl ?? undefined }}
+            fadeDuration={0}
             style={[
               styles.outfitImage,
               {
@@ -738,6 +818,7 @@ function friendWardrobeMatchesSearch(
     item.name,
     item.brand,
     ...item.tags,
+    ...item.fitSizes,
     item.category,
     item.color,
     item.colorValue,
@@ -804,7 +885,19 @@ function getFriendPreviewLayout(
   canvasHeight: number | null,
   previewSize: number
 ) {
-  if (canvasWidth && canvasHeight) {
+  const hasSavedCanvas =
+    typeof canvasWidth === "number" &&
+    typeof canvasHeight === "number" &&
+    Number.isFinite(canvasWidth) &&
+    Number.isFinite(canvasHeight) &&
+    canvasWidth > 0 &&
+    canvasHeight > 0;
+  const bounds = getFriendStickerBounds(stickers);
+
+  if (
+    hasSavedCanvas &&
+    (!bounds || friendStickerBoundsFitCanvas(bounds, canvasWidth, canvasHeight))
+  ) {
     const scale = Math.min(
       previewSize / canvasWidth,
       previewSize / canvasHeight
@@ -819,24 +912,10 @@ function getFriendPreviewLayout(
     };
   }
 
-  if (stickers.length === 0) {
+  if (!bounds) {
     return { minX: 0, minY: 0, offsetX: 0, offsetY: 0, scale: 1 };
   }
 
-  const bounds = stickers.reduce(
-    (current, sticker) => ({
-      minX: Math.min(current.minX, sticker.x),
-      minY: Math.min(current.minY, sticker.y),
-      maxX: Math.max(current.maxX, sticker.x + sticker.size),
-      maxY: Math.max(current.maxY, sticker.y + sticker.size),
-    }),
-    {
-      minX: Number.POSITIVE_INFINITY,
-      minY: Number.POSITIVE_INFINITY,
-      maxX: 0,
-      maxY: 0,
-    }
-  );
   const contentWidth = Math.max(1, bounds.maxX - bounds.minX);
   const contentHeight = Math.max(1, bounds.maxY - bounds.minY);
   const inset = 12;
@@ -852,6 +931,59 @@ function getFriendPreviewLayout(
     offsetY: (previewSize - contentHeight * scale) / 2,
     scale,
   };
+}
+
+type FriendStickerBounds = {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+function getFriendStickerBounds(
+  stickers: FriendOutfitSticker[]
+): FriendStickerBounds | null {
+  const validStickers = stickers.filter(
+    (sticker) =>
+      Number.isFinite(sticker.x) &&
+      Number.isFinite(sticker.y) &&
+      Number.isFinite(sticker.size) &&
+      sticker.size > 0
+  );
+
+  if (validStickers.length === 0) {
+    return null;
+  }
+
+  return validStickers.reduce<FriendStickerBounds>(
+    (current, sticker) => ({
+      minX: Math.min(current.minX, sticker.x),
+      minY: Math.min(current.minY, sticker.y),
+      maxX: Math.max(current.maxX, sticker.x + sticker.size),
+      maxY: Math.max(current.maxY, sticker.y + sticker.size),
+    }),
+    {
+      minX: Number.POSITIVE_INFINITY,
+      minY: Number.POSITIVE_INFINITY,
+      maxX: Number.NEGATIVE_INFINITY,
+      maxY: Number.NEGATIVE_INFINITY,
+    }
+  );
+}
+
+function friendStickerBoundsFitCanvas(
+  bounds: FriendStickerBounds,
+  canvasWidth: number,
+  canvasHeight: number
+) {
+  const tolerance = 1;
+
+  return (
+    bounds.minX >= -tolerance &&
+    bounds.minY >= -tolerance &&
+    bounds.maxX <= canvasWidth + tolerance &&
+    bounds.maxY <= canvasHeight + tolerance
+  );
 }
 
 const styles = StyleSheet.create({
@@ -1086,7 +1218,21 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   modeButtonTextSelected: { color: COLORS.primary },
-  detailContent: { paddingHorizontal: 16, gap: 8 },
+  detailListContent: { paddingHorizontal: 16 },
+  detailListHeader: { gap: 0, marginBottom: 8 },
+  detailGridRow: { gap: 8, marginBottom: 8 },
+  detailEmptyListContent: { flexGrow: 1 },
+  detailLoading: {
+    minHeight: 260,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  detailLoadingText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: COLORS.textSecondary,
+  },
   searchInput: {
     minHeight: 40,
     paddingHorizontal: 14,
@@ -1119,7 +1265,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   categoryChipTextSelected: { color: COLORS.primary },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
   wardrobeCard: {
     overflow: "hidden",
     borderRadius: 16,
@@ -1133,6 +1278,13 @@ const styles = StyleSheet.create({
     padding: 6,
     backgroundColor: COLORS.surface,
   },
+  friendImageLoader: {
+    flex: 1,
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  friendImageSpinner: { position: "absolute", opacity: 0.72 },
   cardImage: { width: "100%", height: "100%", resizeMode: "contain" },
   cardLabelRow: {
     minHeight: 52,

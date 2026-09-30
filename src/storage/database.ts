@@ -13,6 +13,7 @@ import type {
 import type { LocalBackupDatabaseImportResult, LocalBackupPayload } from '../types/backup';
 import type { ClothingCloudFields, CloudSyncStatus } from '../types/sync';
 import type { NewOutfit, Outfit, OutfitSticker } from '../types/outfit';
+import type { FitEntry, NewFitEntry } from '../types/fit';
 import { inferColorFamilyFromHex, resolveColorOption } from '../services/colorSearch';
 
 const DATABASE_NAME = 'lookbookie.db';
@@ -26,6 +27,7 @@ type ClothingRow = {
   name: string | null;
   brand: string | null;
   tags: string | null;
+  fit_sizes: string | null;
   category: ClothingCategory;
   seasons: string | null;
   color: ClothingColor;
@@ -46,6 +48,20 @@ type OutfitRow = {
   stickers: string;
   canvas_width: number | null;
   canvas_height: number | null;
+  created_at: string;
+  cloud_sync_status: CloudSyncStatus | null;
+  cloud_error: string | null;
+  synced_at: string | null;
+};
+
+type FitRow = {
+  id: number;
+  local_image_path: string;
+  remote_image_url: string | null;
+  remote_record_id: string | null;
+  storage_path: string | null;
+  clothing_item_ids: string | null;
+  outfit_id: number | null;
   created_at: string;
   cloud_sync_status: CloudSyncStatus | null;
   cloud_error: string | null;
@@ -87,6 +103,14 @@ export async function initDatabase() {
       stickers TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS fits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      local_image_path TEXT NOT NULL,
+      clothing_item_ids TEXT NOT NULL DEFAULT '[]',
+      outfit_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   await ensureColumn(db, 'clothes', 'remote_image_url', 'TEXT');
@@ -94,6 +118,7 @@ export async function initDatabase() {
   await ensureColumn(db, 'clothes', 'storage_path', 'TEXT');
   await ensureColumn(db, 'clothes', 'name', 'TEXT');
   await ensureColumn(db, 'clothes', 'tags', "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, 'clothes', 'fit_sizes', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, 'clothes', 'color_value', 'TEXT');
   await ensureColumn(db, 'clothes', 'color_family', 'TEXT');
   await ensureColumn(db, 'clothes', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
@@ -107,6 +132,12 @@ export async function initDatabase() {
   await ensureColumn(db, 'outfits', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
   await ensureColumn(db, 'outfits', 'cloud_error', 'TEXT');
   await ensureColumn(db, 'outfits', 'synced_at', 'DATETIME');
+  await ensureColumn(db, 'fits', 'remote_image_url', 'TEXT');
+  await ensureColumn(db, 'fits', 'remote_record_id', 'TEXT');
+  await ensureColumn(db, 'fits', 'storage_path', 'TEXT');
+  await ensureColumn(db, 'fits', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
+  await ensureColumn(db, 'fits', 'cloud_error', 'TEXT');
+  await ensureColumn(db, 'fits', 'synced_at', 'DATETIME');
 }
 
 export async function insertClothingItem(item: NewClothingItem) {
@@ -121,6 +152,7 @@ export async function insertClothingItem(item: NewClothingItem) {
 	      name,
 	      brand,
 	      tags,
+	      fit_sizes,
 	      category,
 	      seasons,
 	      color,
@@ -129,7 +161,7 @@ export async function insertClothingItem(item: NewClothingItem) {
 	      cloud_sync_status,
 	      cloud_error,
 	      synced_at
-	    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     item.localImagePath,
     item.remoteImageUrl ?? null,
     item.remoteRecordId ?? null,
@@ -137,6 +169,7 @@ export async function insertClothingItem(item: NewClothingItem) {
     item.name.trim(),
     item.brand.trim(),
     JSON.stringify(item.tags),
+    JSON.stringify(item.fitSizes),
     item.category,
     JSON.stringify(item.seasons),
     item.color,
@@ -162,6 +195,7 @@ export async function updateClothingItem(item: ClothingItem) {
 	         name = ?,
 	         brand = ?,
 	         tags = ?,
+	         fit_sizes = ?,
 	         category = ?,
 	         seasons = ?,
 	         color = ?,
@@ -178,6 +212,7 @@ export async function updateClothingItem(item: ClothingItem) {
     item.name.trim(),
     item.brand.trim(),
     JSON.stringify(item.tags),
+    JSON.stringify(item.fitSizes),
     item.category,
     JSON.stringify(item.seasons),
     item.color,
@@ -218,6 +253,37 @@ export async function renameClothingCategory(
     nextCategory,
     currentCategory,
   );
+}
+
+export async function renameClothingFitSize(currentValue: string, nextValue: string) {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<Pick<ClothingRow, 'id' | 'fit_sizes' | 'remote_record_id'>>(
+    'SELECT id, fit_sizes, remote_record_id FROM clothes',
+  );
+
+  await db.withTransactionAsync(async () => {
+    for (const row of rows) {
+      const current = parseStringArray(row.fit_sizes);
+
+      if (!current.includes(currentValue)) {
+        continue;
+      }
+
+      const next = Array.from(
+        new Set(current.map((value) => (value === currentValue ? nextValue : value))),
+      );
+      await db.runAsync(
+        `UPDATE clothes
+         SET fit_sizes = ?,
+             cloud_sync_status = CASE WHEN remote_record_id IS NOT NULL THEN 'pending' ELSE cloud_sync_status END,
+             cloud_error = NULL,
+             synced_at = CASE WHEN remote_record_id IS NOT NULL THEN NULL ELSE synced_at END
+         WHERE id = ?`,
+        JSON.stringify(next),
+        row.id,
+      );
+    }
+  });
 }
 
 export async function listClothingItems(filter: CategoryFilter) {
@@ -365,6 +431,137 @@ export async function countOutfits() {
   return row?.count ?? 0;
 }
 
+export async function insertFitEntry(fit: NewFitEntry) {
+  const db = await getDatabase();
+  const result = await db.runAsync(
+    `INSERT INTO fits (
+      local_image_path,
+      remote_image_url,
+      remote_record_id,
+      storage_path,
+      clothing_item_ids,
+      outfit_id,
+      cloud_sync_status,
+      cloud_error,
+      synced_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    fit.localImagePath,
+    fit.remoteImageUrl,
+    fit.remoteRecordId,
+    fit.storagePath,
+    JSON.stringify(fit.clothingItemIds),
+    fit.outfitId,
+    fit.cloudSyncStatus,
+    fit.cloudError,
+    fit.syncedAt,
+  );
+
+  return result.lastInsertRowId;
+}
+
+export async function updateFitEntry(fit: FitEntry) {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE fits
+     SET local_image_path = ?,
+         remote_image_url = ?,
+         remote_record_id = ?,
+         storage_path = ?,
+         clothing_item_ids = ?,
+         outfit_id = ?,
+         cloud_sync_status = ?,
+         cloud_error = ?,
+         synced_at = ?
+     WHERE id = ?`,
+    fit.localImagePath,
+    fit.remoteImageUrl,
+    fit.remoteRecordId,
+    fit.storagePath,
+    JSON.stringify(fit.clothingItemIds),
+    fit.outfitId,
+    fit.cloudSyncStatus,
+    fit.cloudError,
+    fit.syncedAt,
+    fit.id,
+  );
+}
+
+export async function updateFitCloudState(
+  id: number,
+  fields: Pick<
+    FitEntry,
+    | 'remoteImageUrl'
+    | 'remoteRecordId'
+    | 'storagePath'
+    | 'cloudSyncStatus'
+    | 'cloudError'
+    | 'syncedAt'
+  >,
+) {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE fits
+     SET remote_image_url = ?, remote_record_id = ?, storage_path = ?,
+         cloud_sync_status = ?, cloud_error = ?, synced_at = ?
+     WHERE id = ?`,
+    fields.remoteImageUrl,
+    fields.remoteRecordId,
+    fields.storagePath,
+    fields.cloudSyncStatus,
+    fields.cloudError,
+    fields.syncedAt,
+    id,
+  );
+}
+
+export async function listFitEntries() {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<FitRow>(
+    'SELECT * FROM fits ORDER BY datetime(created_at) DESC, id DESC',
+  );
+  return rows.map(mapFitRow);
+}
+
+export async function listFitsContainingClothingItem(clothingItemId: number) {
+  const fits = await listFitEntries();
+  return fits.filter((fit) => fit.clothingItemIds.includes(clothingItemId));
+}
+
+export async function listFitsForOutfit(outfitId: number) {
+  const fits = await listFitEntries();
+  return fits.filter((fit) => fit.outfitId === outfitId);
+}
+
+export async function countFits() {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM fits');
+  return row?.count ?? 0;
+}
+
+export async function listCloudPendingFitEntries() {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<FitRow>(
+    `SELECT * FROM fits
+     WHERE cloud_sync_status IN ('pending', 'failed')
+     ORDER BY datetime(created_at) ASC, id ASC`,
+  );
+  return rows.map(mapFitRow);
+}
+
+export async function countCloudPendingFitEntries() {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM fits
+     WHERE cloud_sync_status IN ('pending', 'failed')`,
+  );
+  return row?.count ?? 0;
+}
+
+export async function deleteFitEntry(id: number) {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM fits WHERE id = ?', id);
+}
+
 export async function listCloudPendingClothingItems() {
   const db = await getDatabase();
   const rows = await db.getAllAsync<ClothingRow>(
@@ -407,6 +604,15 @@ export async function detachAllLocalCloudData() {
            cloud_error = NULL,
            synced_at = NULL`
     );
+    await db.runAsync(
+      `UPDATE fits
+       SET remote_image_url = NULL,
+           remote_record_id = NULL,
+           storage_path = NULL,
+           cloud_sync_status = 'local',
+           cloud_error = NULL,
+           synced_at = NULL`,
+    );
   });
 }
 
@@ -418,12 +624,16 @@ export async function createLocalBackupPayload(): Promise<LocalBackupPayload> {
   const outfitRows = await db.getAllAsync<OutfitRow>(
     'SELECT * FROM outfits ORDER BY datetime(created_at) ASC, id ASC',
   );
+  const fitRows = await db.getAllAsync<FitRow>(
+    'SELECT * FROM fits ORDER BY datetime(created_at) ASC, id ASC',
+  );
 
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
     clothes: clothingRows.map(mapClothingRow),
     outfits: outfitRows.map(mapOutfitRow),
+    fits: fitRows.map(mapFitRow),
   };
 }
 
@@ -436,7 +646,9 @@ export async function importLocalBackupPayload(
 
   let clothesCount = 0;
   let outfitsCount = 0;
+  let fitsCount = 0;
   const clothingIdMap = new Map<number, number>();
+  const outfitIdMap = new Map<number, number>();
 
   for (const item of payload.clothes) {
     const fallbackImagePath = item.localImagePath || item.remoteImageUrl;
@@ -454,6 +666,7 @@ export async function importLocalBackupPayload(
       name: item.name,
       brand: item.brand,
       tags: item.tags ?? [],
+      fitSizes: item.fitSizes ?? [],
       category: item.category,
       seasons: item.seasons,
       color: item.color,
@@ -478,7 +691,7 @@ export async function importLocalBackupPayload(
       }];
     });
 
-    await insertOutfit({
+    const insertedOutfitId = await insertOutfit({
       remoteRecordId: outfit.remoteRecordId ?? null,
       name: outfit.name,
       seasons: outfit.seasons ?? [],
@@ -490,12 +703,37 @@ export async function importLocalBackupPayload(
       cloudError: null,
       syncedAt: null,
     });
+    outfitIdMap.set(outfit.id, insertedOutfitId);
     outfitsCount += 1;
+  }
+
+  for (const fit of payload.fits ?? []) {
+    const fallbackImagePath = fit.localImagePath || fit.remoteImageUrl;
+
+    if (!fallbackImagePath) {
+      continue;
+    }
+
+    await insertFitEntry({
+      localImagePath: fallbackImagePath,
+      remoteImageUrl: fit.remoteImageUrl ?? null,
+      remoteRecordId: fit.remoteRecordId ?? null,
+      storagePath: fit.storagePath ?? null,
+      clothingItemIds: fit.clothingItemIds.map(
+        (id) => clothingIdMap.get(id) ?? -Math.max(1, Math.abs(id)),
+      ),
+      outfitId: fit.outfitId === null ? null : outfitIdMap.get(fit.outfitId) ?? null,
+      cloudSyncStatus: fit.remoteRecordId ? 'pending' : 'local',
+      cloudError: null,
+      syncedAt: null,
+    });
+    fitsCount += 1;
   }
 
   return {
     clothesCount,
     outfitsCount,
+    fitsCount,
   };
 }
 
@@ -535,6 +773,7 @@ function mapClothingRow(row: ClothingRow): ClothingItem {
     name: row.name ?? row.brand ?? '',
     brand: row.brand ?? '',
     tags: parseStringArray(row.tags),
+    fitSizes: parseStringArray(row.fit_sizes),
     category: row.category,
     seasons: parseSeasons(row.seasons),
     color: row.color,
@@ -578,6 +817,22 @@ function mapOutfitRow(row: OutfitRow): Outfit {
   };
 }
 
+function mapFitRow(row: FitRow): FitEntry {
+  return {
+    id: row.id,
+    localImagePath: row.local_image_path,
+    remoteImageUrl: row.remote_image_url ?? null,
+    remoteRecordId: row.remote_record_id ?? null,
+    storagePath: row.storage_path ?? null,
+    clothingItemIds: parseNumberArray(row.clothing_item_ids),
+    outfitId: row.outfit_id ?? null,
+    createdAt: row.created_at,
+    cloudSyncStatus: row.cloud_sync_status ?? 'local',
+    cloudError: row.cloud_error ?? null,
+    syncedAt: row.synced_at ?? null,
+  };
+}
+
 function parseStringArray(value: string | null) {
   if (!value) {
     return [];
@@ -593,6 +848,19 @@ function parseStringArray(value: string | null) {
   }
 }
 
+function parseNumberArray(value: string | null) {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function parseStickers(value: string): OutfitSticker[] {
   try {
     const parsed = JSON.parse(value);
@@ -601,22 +869,39 @@ function parseStickers(value: string): OutfitSticker[] {
       return [];
     }
 
-    return parsed.map((sticker) => ({
-      ...sticker,
-      remoteImageUrl:
-        typeof sticker.remoteImageUrl === 'string' ? sticker.remoteImageUrl : null,
-      name: typeof sticker.name === 'string' ? sticker.name : '',
-      brand: typeof sticker.brand === 'string' ? sticker.brand : '',
-      category: typeof sticker.category === 'string' ? sticker.category : null,
-    })) as OutfitSticker[];
+    return parsed
+      .filter((sticker): sticker is Record<string, unknown> =>
+        Boolean(sticker && typeof sticker === 'object'),
+      )
+      .map((sticker, index) => ({
+        ...sticker,
+        id: typeof sticker.id === 'string' ? sticker.id : `restored-${index}`,
+        clothingItemId: getFiniteNumber(sticker.clothingItemId, -1),
+        localImagePath:
+          typeof sticker.localImagePath === 'string' ? sticker.localImagePath : '',
+        remoteImageUrl:
+          typeof sticker.remoteImageUrl === 'string' ? sticker.remoteImageUrl : null,
+        name: typeof sticker.name === 'string' ? sticker.name : '',
+        brand: typeof sticker.brand === 'string' ? sticker.brand : '',
+        category: typeof sticker.category === 'string' ? sticker.category : null,
+        x: getFiniteNumber(sticker.x, 0),
+        y: getFiniteNumber(sticker.y, 0),
+        size: Math.max(1, getFiniteNumber(sticker.size, 96)),
+        rotation: getFiniteNumber(sticker.rotation, 0),
+        zIndex: getFiniteNumber(sticker.zIndex, index + 1),
+      })) as OutfitSticker[];
   } catch {
     return [];
   }
 }
 
+function getFiniteNumber(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
 async function ensureColumn(
   db: SQLiteDatabase,
-  tableName: 'clothes' | 'outfits',
+  tableName: 'clothes' | 'outfits' | 'fits',
   columnName: string,
   definition: string,
 ) {

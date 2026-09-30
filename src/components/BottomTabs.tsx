@@ -1,9 +1,11 @@
+import type { ComponentType } from "react";
 import { BookOpen, Shirt, UserRound, Users } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { COLORS } from "../../constants/colors";
+import { MyFitIcon } from "./MyFitIcon";
 
-export type AppTab = "wardrobe" | "codiBook" | "friends" | "profile";
+export type AppTab = "wardrobe" | "myFit" | "codiBook" | "friends" | "profile";
 
 type BottomTabsProps = {
   activeTab: AppTab;
@@ -14,11 +16,16 @@ type BottomTabsProps = {
 type TabConfig = {
   key: AppTab;
   label: string;
-  Icon: typeof Shirt;
+  Icon: ComponentType<{
+    color: string;
+    size: number;
+    strokeWidth: number;
+  }>;
 };
 
 const TABS: TabConfig[] = [
   { key: "wardrobe", label: "옷장", Icon: Shirt },
+  { key: "myFit", label: "마이핏", Icon: MyFitIcon },
   { key: "codiBook", label: "코디북", Icon: BookOpen },
   { key: "friends", label: "친구", Icon: Users },
   { key: "profile", label: "마이", Icon: UserRound },

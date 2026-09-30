@@ -10,12 +10,13 @@ import {
   Globe,
   MessageCircle,
   Palette,
+  Ruler,
   Tags,
   Trash2,
   Turtle,
   UserRound,
 } from "lucide-react-native";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   BackHandler,
@@ -35,15 +36,17 @@ import { COLORS } from "../../constants/colors";
 import { AppAlert } from "../components/AppDialog";
 import { CategoryManager } from "../components/CategoryManager";
 import { ColorPaletteManager } from "../components/ColorPaletteManager";
+import { FitSizeManager } from "../components/FitSizeManager";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useCategoryOptions } from "../hooks/useCategoryOptions";
 import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
-import { renameClothingCategory } from "../storage/database";
+import { useFitSizeOptions } from "../hooks/useFitSizeOptions";
+import { renameClothingCategory, renameClothingFitSize } from "../storage/database";
 import type { SocialAuthProvider } from "../services/socialAuth";
 import type { ClothingCategory } from "../types/clothing";
 
-type SettingsPage = "main" | "account" | "sync" | "categories" | "colors";
+type SettingsPage = "main" | "account" | "sync" | "categories" | "colors" | "fitSizes";
 
 type MyPageScreenProps = {
   clothesCount: number;
@@ -68,6 +71,7 @@ type MyPageScreenProps = {
   onExportBackup: () => Promise<void>;
   onImportBackup: () => Promise<void>;
   onCategoriesChanged: () => Promise<void>;
+  resetSignal: number;
 };
 
 export function MyPageScreen({
@@ -93,6 +97,7 @@ export function MyPageScreen({
   onExportBackup,
   onImportBackup,
   onCategoriesChanged,
+  resetSignal,
 }: MyPageScreenProps) {
   const [page, setPage] = useState<SettingsPage>("main");
   const [email, setEmail] = useState("");
@@ -106,6 +111,7 @@ export function MyPageScreen({
   const [isHandleCopied, setIsHandleCopied] = useState(false);
   const [isDeleteDialogVisible, setIsDeleteDialogVisible] = useState(false);
   const keyboardHeight = useKeyboardHeight();
+  const mainScrollRef = useRef<ScrollView>(null);
   const {
     colorOptions,
     customColorOptions,
@@ -113,6 +119,12 @@ export function MyPageScreen({
     setCustomColorOptions,
   } = useColorPaletteOptions();
   const { categoryOptions, setCategoryOptions } = useCategoryOptions();
+  const { fitSizeOptions, setFitSizeOptions } = useFitSizeOptions();
+
+  useEffect(() => {
+    setPage("main");
+    requestAnimationFrame(() => mainScrollRef.current?.scrollTo({ y: 0, animated: true }));
+  }, [resetSignal]);
 
   useEffect(() => {
     setDisplayName(cloudDisplayName ?? "");
@@ -263,8 +275,29 @@ export function MyPageScreen({
     await onCategoriesChanged();
   };
 
-  if (page === "categories" || page === "colors") {
+  const updateFitSizes = async (
+    nextOptions: string[],
+    rename?: { from: string; to: string },
+  ) => {
+    if (rename) {
+      await renameClothingFitSize(rename.from, rename.to);
+    }
+
+    try {
+      await setFitSizeOptions(nextOptions);
+    } catch (error) {
+      if (rename) {
+        await renameClothingFitSize(rename.to, rename.from);
+      }
+      throw error;
+    }
+
+    await onCategoriesChanged();
+  };
+
+  if (page === "categories" || page === "colors" || page === "fitSizes") {
     const isCategoryPage = page === "categories";
+    const isFitSizePage = page === "fitSizes";
 
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -287,10 +320,14 @@ export function MyPageScreen({
             </Pressable>
             <View style={styles.subpageTitleGroup}>
               <Text style={styles.title}>
-                {isCategoryPage ? "카테고리 관리" : "색상 팔레트"}
+                {isCategoryPage
+                  ? "카테고리 관리"
+                  : isFitSizePage
+                    ? "핏/사이즈 관리"
+                    : "색상 팔레트"}
               </Text>
               <Text style={styles.caption}>
-                {isCategoryPage
+                {isCategoryPage || isFitSizePage
                   ? "이름과 표시 순서를 관리해요"
                   : "색과 표시 순서를 관리해요"}
               </Text>
@@ -311,6 +348,8 @@ export function MyPageScreen({
                 categories={categoryOptions}
                 onChange={updateCategories}
               />
+            ) : isFitSizePage ? (
+              <FitSizeManager options={fitSizeOptions} onChange={updateFitSizes} />
             ) : (
               <ColorPaletteManager
                 colorOptions={colorOptions}
@@ -464,7 +503,7 @@ export function MyPageScreen({
                 <View style={styles.dangerZone}>
                   <Text style={styles.dangerTitle}>회원 탈퇴</Text>
                   <Text style={styles.panelText}>
-                    클라우드에 저장된 옷, 코디, 친구 관계와 계정을 영구
+                    클라우드에 저장된 옷, 코디, 마이핏, 친구 관계와 계정을 영구
                     삭제해요.
                   </Text>
                   <Pressable
@@ -697,7 +736,7 @@ export function MyPageScreen({
           <ConfirmDialog
             visible={isDeleteDialogVisible}
             title="정말 탈퇴할까북?"
-            message="클라우드의 옷, 코디, 친구 관계와 계정이 영구 삭제되며 되돌릴 수 없어요. 이 기기의 로컬 옷과 코디는 그대로 남아요."
+            message="클라우드의 옷, 코디, 마이핏, 친구 관계와 계정이 영구 삭제되며 되돌릴 수 없어요. 이 기기의 로컬 데이터는 그대로 남아요."
             cancelLabel="취소"
             confirmLabel="탈퇴하기"
             destructive
@@ -806,7 +845,7 @@ export function MyPageScreen({
           <View style={styles.panel}>
             <Text style={styles.sectionTitle}>로컬 백업</Text>
             <Text style={styles.panelText}>
-              옷과 코디의 텍스트 데이터를 JSON 파일로 내보내거나 가져와요.
+              옷, 코디, 마이핏 데이터를 JSON 파일로 내보내거나 가져와요.
             </Text>
             <View style={styles.actions}>
               <Pressable
@@ -842,6 +881,7 @@ export function MyPageScreen({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <ScrollView
+          ref={mainScrollRef}
           style={styles.scrollView}
           contentContainerStyle={[
             styles.container,
@@ -904,6 +944,12 @@ export function MyPageScreen({
               caption={`${colorOptions.length}개 · 색상 및 순서`}
               Icon={Palette}
               onPress={() => setPage("colors")}
+            />
+            <SettingsRow
+              title="핏/사이즈 관리"
+              caption={`${fitSizeOptions.length}개 · 이름 및 순서`}
+              Icon={Ruler}
+              onPress={() => setPage("fitSizes")}
             />
           </View>
         </ScrollView>
