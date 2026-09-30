@@ -4,9 +4,9 @@
   <p>거북이 마스코트와 함께 옷을 기록하고 코디를 만드는 오프라인 퍼스트 옷장 앱</p>
 </div>
 
-룩부기는 옷 사진과 메타데이터를 기기에 먼저 저장해 네트워크 없이도 개인 옷장과 코디북을 사용할 수 있게 만든 React Native 앱입니다. 로그인한 사용자는 Supabase에 데이터를 동기화하고 친구 요청을 주고받아 서로의 옷장과 코디북을 볼 수 있습니다.
+룩부기는 옷 사진과 메타데이터를 기기에 먼저 저장해 네트워크 없이도 개인 옷장, 마이핏, 코디북을 사용할 수 있게 만든 React Native 앱입니다. 로그인한 사용자는 Supabase에 데이터를 동기화하고 친구 요청을 주고받아 서로의 옷장과 코디북을 볼 수 있습니다.
 
-- 현재 앱 버전: `1.1.1`
+- 현재 앱 버전: `1.2.0`
 - Android 패키지: `com.lookboogie.app`
 - URL scheme: `lookboogie://`
 
@@ -18,10 +18,18 @@
 - 드래그·핀치 확대가 가능한 비율 크롭과 `0~360°` 회전
 - 브러시 크기 조절, 실행 취소·다시 실행·초기화를 지원하는 수동 배경 지우개
 - 사진 기반 대표색 추천과 사용자 색상 팔레트
-- 이름, 브랜드, 카테고리, 계절, 색상, 태그 메타데이터
+- 이름, 브랜드, 카테고리, 계절, 색상, 태그, 핏/사이즈 메타데이터
 - 이름·브랜드·계절·색상·태그 통합 검색과 정렬·필터
 - 3열 그리드, 옷 상세 수정, 소속 코디 바로가기
-- 사용자 카테고리와 색상 추가·수정·순서 변경
+- 사용자 카테고리, 색상, 핏/사이즈 옵션 추가·수정·순서 변경
+
+### 마이핏
+
+- 직접 옷을 입은 사진을 한 장씩 기록
+- 하나의 마이핏에 여러 옷과 0~1개의 코디북 연결
+- 연결된 옷·코디 확인, 교체, 해제 및 마이핏 수정·삭제
+- 옷·코디 상세에서 연결된 마이핏으로 이동하고 원래 상세 화면으로 복귀
+- 로컬 SQLite 저장, JSON 백업 및 Supabase 이미지·메타데이터 동기화
 
 ### 코디북
 
@@ -38,7 +46,7 @@
 - 중복 불가 룩부기 ID와 친구에게 보이는 닉네임 설정
 - ID로 친구 요청, 수락·거절, 친구 목록 검색
 - 내 화면과 같은 검색·카테고리 구성을 갖춘 친구 옷장·코디북
-- 옷과 코디별 클라우드 동기화 상태 표시
+- 옷, 코디, 마이핏별 클라우드 동기화 상태 표시
 - 로컬 JSON 백업 내보내기·가져오기와 원격 이미지 복원
 - 클라우드 계정 및 연결 데이터 탈퇴
 
@@ -58,7 +66,7 @@
 
 ```mermaid
 flowchart LR
-  UI[옷장·코디북 UI] --> DB[(기기 SQLite)]
+  UI[옷장·마이핏·코디북 UI] --> DB[(기기 SQLite)]
   UI --> FILES[기기 이미지 저장소]
   DB --> SYNC[동기화 서비스]
   FILES --> SYNC
@@ -141,7 +149,7 @@ npx supabase db push
 npx supabase functions deploy delete-account
 ```
 
-마이그레이션은 `public.clothes`, `public.outfits`, `public.profiles`, `public.friendships`와 `clothes` Storage 버킷을 구성합니다. 모든 사용자 데이터 테이블의 RLS를 유지하고, 새 Supabase 프로젝트에서 Data API 자동 노출이 꺼져 있다면 `authenticated` 역할에 필요한 테이블 권한이 부여됐는지도 확인합니다.
+마이그레이션은 `public.clothes`, `public.fits`, `public.outfits`, `public.profiles`, `public.friendships`와 `clothes` Storage 버킷을 구성합니다. 모든 사용자 데이터 테이블의 RLS를 유지하고, 새 Supabase 프로젝트에서 Data API 자동 노출이 꺼져 있다면 `authenticated` 역할에 필요한 테이블 권한이 부여됐는지도 확인합니다.
 
 Google·Kakao 콘솔의 패키지, 인증서 지문, nonce 및 Supabase provider 설정은 [`docs/social-auth-setup.md`](./docs/social-auth-setup.md)를 참고하세요. Apple 로그인 구현은 보관되어 있지만 현재 앱 UI에서는 비활성화되어 있습니다.
 
@@ -182,11 +190,11 @@ LookBookie/
 ├── constants/                # 디자인 토큰
 ├── src/
 │   ├── components/           # 공통 UI, 다이얼로그, 입력·관리 컴포넌트
-│   ├── hooks/                # 카테고리·색상·키보드 상태 훅
-│   ├── screens/              # 옷장, 코디북, 친구, 마이페이지, 이미지 편집 화면
+│   ├── hooks/                # 카테고리·색상·핏/사이즈·키보드 상태 훅
+│   ├── screens/              # 옷장, 마이핏, 코디북, 친구, 마이페이지, 이미지 편집 화면
 │   ├── services/             # 인증, Supabase 동기화, 친구, 백업 로직
 │   ├── storage/              # SQLite와 로컬 이미지 저장
-│   └── types/                # 옷, 코디, 친구, 동기화 타입
+│   └── types/                # 옷, 마이핏, 코디, 친구, 동기화 타입
 ├── supabase/
 │   ├── migrations/           # 원격 Postgres 스키마와 RLS 정책
 │   └── functions/            # 계정 탈퇴 Edge Function

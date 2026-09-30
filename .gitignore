@@ -8,6 +8,8 @@ credentials.json
 credentials/
 dist/
 web-build/
+*.apk
+*.apk.zip
 android/
 ios/
 npm-debug.log*
