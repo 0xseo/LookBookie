@@ -3,18 +3,18 @@ import { StyleSheet, View } from "react-native";
 
 import { COLORS } from "../../constants/colors";
 
+const RULER_OUTLINE_EXTRA_WIDTH = 5.5;
+
 type MyFitIconProps = {
   color?: string;
   size?: number;
   strokeWidth?: number;
-  backdropColor?: string;
 };
 
 export function MyFitIcon({
   color = COLORS.textPrimary,
   size = 24,
-  strokeWidth = 2,
-  backdropColor = COLORS.surface,
+  strokeWidth = 3,
 }: MyFitIconProps) {
   const rulerSize = Math.max(11, Math.round(size * 0.58));
   const badgeSize = rulerSize + 3;
@@ -28,16 +28,19 @@ export function MyFitIcon({
           {
             width: badgeSize,
             height: badgeSize,
-            borderRadius: Math.max(3, Math.round(badgeSize * 0.28)),
-            backgroundColor: backdropColor,
           },
         ]}
       >
-        <Ruler
-          color={color}
-          size={rulerSize}
-          strokeWidth={strokeWidth}
-        />
+        <View style={{ width: rulerSize, height: rulerSize }}>
+          <Ruler
+            color={COLORS.surface}
+            fill={COLORS.surface}
+            size={rulerSize}
+            strokeWidth={strokeWidth + RULER_OUTLINE_EXTRA_WIDTH}
+            style={StyleSheet.absoluteFill}
+          />
+          <Ruler color={color} size={rulerSize} strokeWidth={strokeWidth} />
+        </View>
       </View>
     </View>
   );

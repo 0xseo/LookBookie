@@ -2,7 +2,7 @@
   "expo": {
     "name": "룩부기",
     "slug": "lookboogie",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "lookboogie",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.lookboogie.app",
-      "versionCode": 5
+      "versionCode": 6
     },
     "plugins": [
       [

@@ -1,3 +1,4 @@
+import Slider from '@react-native-community/slider';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,7 +11,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Slider from '@react-native-community/slider';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
@@ -23,6 +23,7 @@ import {
 
 type ImageCropScreenProps = {
   imageUri: string;
+  doneLabel?: string;
   onCancel: () => void;
   onDone: (croppedImageUri: string) => void;
 };
@@ -32,14 +33,14 @@ type ImageSize = {
   height: number;
 };
 
-const CROP_OPTIONS: Array<{ label: string; mode: CropMode }> = [
+const CROP_OPTIONS: Array<{ label: string; mode: CropMode; }> = [
   { label: '원본', mode: 'original' },
   { label: '1:1', mode: 'square' },
   { label: '4:5', mode: 'portrait45' },
   { label: '3:4', mode: 'portrait34' },
 ];
 
-export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenProps) {
+export function ImageCropScreen({ imageUri, onCancel, onDone, doneLabel = '다음' }: ImageCropScreenProps) {
   const { width, height } = useWindowDimensions();
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const lastGestureMove = useRef({ dx: 0, dy: 0 });
@@ -52,27 +53,18 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [isCropping, setIsCropping] = useState(false);
+  const [previewSize, setPreviewSize] = useState({ width, height: Math.max(1, height - 340) });
   const rotatedImageSize = useMemo(
     () => imageSize ? getRotatedBoundingSize(imageSize, rotation) : null,
     [imageSize, rotation],
   );
   const selectedRatio = getCropRatio(selectedMode, rotatedImageSize);
   const cropFrame = useMemo(() => {
-    const maxWidth = width - 32;
-    const maxHeight = height - 304;
-    let frameWidth = maxWidth;
-    let frameHeight = frameWidth / selectedRatio;
-
-    if (frameHeight > maxHeight) {
-      frameHeight = maxHeight;
-      frameWidth = frameHeight * selectedRatio;
-    }
-
-    return {
-      width: Math.max(160, frameWidth),
-      height: Math.max(160, frameHeight),
-    };
-  }, [height, selectedRatio, width]);
+    const maxWidth = Math.max(1, previewSize.width - 32);
+    const maxHeight = Math.max(1, previewSize.height - 32);
+    const frameWidth = Math.min(maxWidth, maxHeight * selectedRatio);
+    return { width: frameWidth, height: frameWidth / selectedRatio };
+  }, [previewSize.height, previewSize.width, selectedRatio]);
   const baseScale = imageSize
     ? getRotatedCoverScale(imageSize, cropFrame, rotation)
     : 1;
@@ -227,12 +219,12 @@ export function ImageCropScreen({ imageUri, onCancel, onDone }: ImageCropScreenP
           {isCropping ? (
             <ActivityIndicator color={COLORS.surface} />
           ) : (
-            <Text style={styles.saveButtonText}>다음</Text>
+            <Text style={styles.saveButtonText}>{doneLabel}</Text>
           )}
         </Pressable>
       </View>
 
-      <View style={styles.previewStage}>
+      <View style={styles.previewStage} onLayout={(event) => setPreviewSize(event.nativeEvent.layout)}>
         {imageSize ? (
           <View
             style={[
@@ -354,7 +346,7 @@ function getCropRatio(mode: CropMode, imageSize: ImageSize | null) {
 }
 
 function constrainPan(
-  pan: { x: number; y: number },
+  pan: { x: number; y: number; },
   cropFrame: ImageSize,
   displaySize: ImageSize,
 ) {
@@ -403,8 +395,8 @@ function getRotatedCoverScale(
 }
 
 function getTouchDistance(
-  firstTouch: { pageX: number; pageY: number },
-  secondTouch: { pageX: number; pageY: number },
+  firstTouch: { pageX: number; pageY: number; },
+  secondTouch: { pageX: number; pageY: number; },
 ) {
   const dx = firstTouch.pageX - secondTouch.pageX;
   const dy = firstTouch.pageY - secondTouch.pageY;
@@ -423,7 +415,7 @@ function getCropRect({
   imageSize: ImageSize;
   cropFrame: ImageSize;
   displaySize: ImageSize;
-  pan: { x: number; y: number };
+  pan: { x: number; y: number; };
   baseScale: number;
   zoom: number;
 }): CropRect {
@@ -494,6 +486,8 @@ const styles = StyleSheet.create({
   },
   previewStage: {
     flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
     padding: 16,
     alignItems: 'center',
     justifyContent: 'center',

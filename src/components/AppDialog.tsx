@@ -1,4 +1,3 @@
-import { Turtle } from "lucide-react-native";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   Modal,
@@ -11,6 +10,7 @@ import {
 } from "react-native";
 
 import { COLORS } from "../../constants/colors";
+import { TurtleIcon } from "./TurtleIcon";
 
 type DialogRequest = {
   id: number;
@@ -183,7 +183,7 @@ export function DesignDialog({
         >
           <View style={styles.titleRow}>
             <View style={styles.mascotShell}>
-              <Turtle color={COLORS.primary} size={25} strokeWidth={2.2} />
+              <TurtleIcon color={COLORS.primary} size={25} strokeWidth={2.2} />
             </View>
             <Text style={styles.title}>{title}</Text>
           </View>

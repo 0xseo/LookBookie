@@ -1,14 +1,14 @@
+import * as SplashScreen from "expo-splash-screen";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, Modal, StatusBar, StyleSheet, View } from "react-native";
-import * as SplashScreen from "expo-splash-screen";
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-import { BottomTabs, type AppTab } from "./src/components/BottomTabs";
-import { AppAlert, AppDialogProvider } from "./src/components/AppDialog";
 import { COLORS } from "./constants/colors";
+import { AppAlert, AppDialogProvider } from "./src/components/AppDialog";
+import { BottomTabs, type AppTab } from "./src/components/BottomTabs";
 import {
   AddItemScreen,
   type AddItemScreenHandle,
@@ -16,28 +16,10 @@ import {
 import { ClothingDetailScreen } from "./src/screens/ClothingDetailScreen";
 import { CodiBookScreen } from "./src/screens/CodiBookScreen";
 import { FriendsScreen } from "./src/screens/FriendsScreen";
-import { MyPageScreen } from "./src/screens/MyPageScreen";
 import { MyFitScreen, type MyFitEntryPoint } from "./src/screens/MyFitScreen";
+import { MyPageScreen } from "./src/screens/MyPageScreen";
 import { WardrobeScreen } from "./src/screens/WardrobeScreen";
-import {
-  countCloudPendingClothingItems,
-  countCloudPendingFitEntries,
-  countOutfits,
-  detachAllLocalCloudData,
-  initDatabase,
-  listCloudPendingClothingItems,
-  listCloudPendingFitEntries,
-  listClothingItems,
-  listOutfits,
-  updateClothingCloudState,
-  updateFitCloudState,
-} from "./src/storage/database";
-import { syncFitToCloud } from "./src/services/fitCloud";
 import { deleteCurrentCloudAccount } from "./src/services/accountCloud";
-import {
-  getCloudErrorMessage,
-  isLikelySupabaseUnavailableError,
-} from "./src/services/cloudError";
 import {
   clearRememberedCloudAuthProvider,
   getRememberedCloudAuthProvider,
@@ -45,12 +27,28 @@ import {
   sessionHasAuthProvider,
   type CloudAuthProvider,
 } from "./src/services/authProvider";
-import { isSupabaseConfigured } from "./src/services/supabaseClient";
-import type { CloudSession } from "./src/services/supabaseClient";
 import {
-  signInWithSocialProvider,
-  type SocialAuthProvider,
-} from "./src/services/socialAuth";
+  exportLocalBackupFile,
+  importLocalBackupFile,
+  repairStoredBackupImagePaths,
+} from "./src/services/backupService";
+import {
+  getCloudErrorMessage,
+  isLikelySupabaseUnavailableError,
+} from "./src/services/cloudError";
+import { syncStoredFitToCloud } from "./src/services/fitCloud";
+import {
+  acceptFriendRequest,
+  declineFriendRequest,
+  ensureCurrentProfile,
+  listFriendLibrary,
+  listFriends,
+  listIncomingFriendRequests,
+  listOutgoingFriendRequests,
+  sendFriendRequestByHandle,
+  updateCurrentProfileDisplayName,
+  updateCurrentProfileHandle,
+} from "./src/services/friendsCloud";
 import {
   signInWithNativeGoogle,
   signOutNativeGoogle,
@@ -60,8 +58,14 @@ import {
   signOutNativeKakao,
 } from "./src/services/nativeKakaoAuth";
 import {
-  getExistingClothingRemoteRecordIds,
+  signInWithSocialProvider,
+  type SocialAuthProvider,
+} from "./src/services/socialAuth";
+import type { CloudSession } from "./src/services/supabaseClient";
+import { isSupabaseConfigured } from "./src/services/supabaseClient";
+import {
   getCurrentCloudSession,
+  getExistingClothingRemoteRecordIds,
   signInWithEmail,
   signOutCloud,
   signUpWithEmail,
@@ -69,24 +73,20 @@ import {
   syncClothingItemUpdateToCloud,
 } from "./src/services/wardrobeCloud";
 import {
-  exportLocalBackupFile,
-  importLocalBackupFile,
-  repairStoredBackupImagePaths,
-} from "./src/services/backupService";
-import {
-  acceptFriendRequest,
-  declineFriendRequest,
-  ensureCurrentProfile,
-  listIncomingFriendRequests,
-  listFriends,
-  listFriendLibrary,
-  listOutgoingFriendRequests,
-  sendFriendRequestByHandle,
-  updateCurrentProfileDisplayName,
-  updateCurrentProfileHandle,
-} from "./src/services/friendsCloud";
+  countCloudPendingClothingItems,
+  countCloudPendingFitEntries,
+  countOutfits,
+  detachAllLocalCloudData,
+  initDatabase,
+  listClothingItems,
+  listCloudPendingClothingItems,
+  listCloudPendingFitEntries,
+  listOutfits,
+  updateClothingCloudState,
+} from "./src/storage/database";
 import type { CategoryFilter, ClothingItem } from "./src/types/clothing";
 import type {
+  FriendFit,
   FriendOutfit,
   FriendProfile,
   FriendRequest,
@@ -147,9 +147,10 @@ function AppContent() {
   const [selectedWardrobeItem, setSelectedWardrobeItem] =
     useState<ClothingItem | null>(null);
   const [requestedOutfitId, setRequestedOutfitId] = useState<number | null>(null);
+  const [codiReturnToMyFit, setCodiReturnToMyFit] = useState(false);
   const [myFitEntryPoint, setMyFitEntryPoint] = useState<MyFitEntryPoint | null>(null);
   const [myFitReturnSource, setMyFitReturnSource] = useState<
-    { kind: "clothing"; id: number } | { kind: "outfit"; id: number } | null
+    { kind: "clothing"; id: number; } | { kind: "outfit"; id: number; } | null
   >(null);
   const myFitRequestIdRef = useRef(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -179,11 +180,12 @@ function AppContent() {
     FriendWardrobeItem[]
   >([]);
   const [friendOutfits, setFriendOutfits] = useState<FriendOutfit[]>([]);
+  const [friendFits, setFriendFits] = useState<FriendFit[]>([]);
   const addItemScreenRef = useRef<AddItemScreenHandle>(null);
   const friendDataCacheRef = useRef(
     new Map<
       string,
-      { wardrobeItems: FriendWardrobeItem[]; outfits: FriendOutfit[] }
+      { wardrobeItems: FriendWardrobeItem[]; outfits: FriendOutfit[]; fits: FriendFit[]; }
     >()
   );
   const friendLoadRequestRef = useRef(0);
@@ -426,6 +428,7 @@ function AppContent() {
       setSelectedFriend(null);
       setFriendWardrobeItems([]);
       setFriendOutfits([]);
+      setFriendFits([]);
       return;
     }
 
@@ -451,6 +454,7 @@ function AppContent() {
       return;
     }
 
+    setCodiReturnToMyFit(false);
     if (tab !== "myFit") {
       setMyFitEntryPoint(null);
       setMyFitReturnSource(null);
@@ -471,11 +475,13 @@ function AppContent() {
     setActiveTab("myFit");
   };
 
-  const openMyFitsForOutfit = (outfitId: number) => {
+  const openMyFitsForOutfit = (outfitId: number, create = false) => {
+    setCodiReturnToMyFit(false);
     myFitRequestIdRef.current += 1;
     setMyFitReturnSource({ kind: "outfit", id: outfitId });
     setMyFitEntryPoint({
       kind: "outfit",
+      create,
       id: outfitId,
       requestId: myFitRequestIdRef.current,
     });
@@ -831,21 +837,24 @@ function AppContent() {
     if (cachedData) {
       setFriendWardrobeItems(cachedData.wardrobeItems);
       setFriendOutfits(cachedData.outfits);
+      setFriendFits(cachedData.fits);
     } else {
       setFriendWardrobeItems([]);
       setFriendOutfits([]);
+      setFriendFits([]);
     }
 
     try {
-      const { wardrobeItems, outfits } = await listFriendLibrary(friend.id);
+      const { wardrobeItems, outfits, fits } = await listFriendLibrary(friend.id);
 
       if (friendLoadRequestRef.current !== requestId) {
         return;
       }
 
-      friendDataCacheRef.current.set(friend.id, { wardrobeItems, outfits });
+      friendDataCacheRef.current.set(friend.id, { wardrobeItems, outfits, fits });
       setFriendWardrobeItems(wardrobeItems);
       setFriendOutfits(outfits);
+      setFriendFits(fits);
     } catch (error) {
       showCloudRequestError("친구 데이터를 불러오지 못했어북", error);
     } finally {
@@ -869,6 +878,7 @@ function AppContent() {
     setSelectedFriend(null);
     setFriendWardrobeItems([]);
     setFriendOutfits([]);
+    setFriendFits([]);
   }, []);
 
   const handleSyncPending = async () => {
@@ -900,12 +910,12 @@ function AppContent() {
       for (const item of pendingItems) {
         const cloudState = await syncClothingItemUpdateToCloud(item, false);
 
-        if (cloudState.cloudSyncStatus === "synced") {
+        if (cloudState?.cloudSyncStatus === "synced") {
           syncedCount += 1;
         }
 
         if (
-          cloudState.cloudError &&
+          cloudState?.cloudError &&
           isLikelySupabaseUnavailableError(cloudState.cloudError)
         ) {
           unavailableError = cloudState.cloudError;
@@ -917,25 +927,23 @@ function AppContent() {
       const syncedClothingItems = await listClothingItems("전체");
 
       for (const fit of pendingFits) {
-        const cloudState = await syncFitToCloud(
-          fit,
+        const cloudState = await syncStoredFitToCloud(
+          fit.id,
           syncedClothingItems,
-          storedOutfits,
-          false
+          storedOutfits
         );
 
-        if (cloudState.cloudSyncStatus === "synced") {
+        if (cloudState?.cloudSyncStatus === "synced") {
           syncedCount += 1;
         }
 
         if (
-          cloudState.cloudError &&
+          cloudState?.cloudError &&
           isLikelySupabaseUnavailableError(cloudState.cloudError)
         ) {
           unavailableError = cloudState.cloudError;
         }
 
-        await updateFitCloudState(fit.id, cloudState);
       }
 
       await loadItems();
@@ -974,36 +982,44 @@ function AppContent() {
         />
       ) : null}
 
-      {activeTab === "myFit" ? (
-        <MyFitScreen
-          items={items}
-          bottomInset={tabBarInset}
-          resetSignal={tabResetSignals.myFit}
-          entryPoint={myFitEntryPoint}
-          onEntryPointHandled={() => setMyFitEntryPoint(null)}
-          onReturnToSource={returnFromMyFit}
-          onOpenClothingItem={setSelectedWardrobeItem}
-          onOpenOutfit={(outfitId) => {
-            setRequestedOutfitId(outfitId);
-            setActiveTab("codiBook");
-          }}
-          onChanged={loadCloudPendingCount}
-        />
+      {isDatabaseReady ? (
+        <View style={[styles.tabScreen, activeTab !== "myFit" && styles.hiddenTab]} pointerEvents={activeTab === "myFit" ? "auto" : "none"}>
+          <MyFitScreen
+            isActive={activeTab === "myFit"}
+            items={items}
+            bottomInset={tabBarInset}
+            resetSignal={tabResetSignals.myFit}
+            entryPoint={myFitEntryPoint}
+            onEntryPointHandled={() => setMyFitEntryPoint(null)}
+            onReturnToSource={returnFromMyFit}
+            onOpenClothingItem={setSelectedWardrobeItem}
+            onOpenOutfit={(outfitId) => {
+              setRequestedOutfitId(outfitId);
+              setCodiReturnToMyFit(true);
+              setActiveTab("codiBook");
+            }}
+            onChanged={loadCloudPendingCount}
+          />
+        </View>
       ) : null}
 
-      {activeTab === "codiBook" ? (
-        <CodiBookScreen
-          items={items}
-          isLoading={isLoading}
-          bottomInset={tabBarInset}
-          requestedOutfitId={requestedOutfitId}
-          onOutfitSaved={handleOutfitSaved}
-          onOpenWardrobe={() => setActiveTab("wardrobe")}
-          onOpenClothingItem={setSelectedWardrobeItem}
-          onRequestedOutfitOpened={() => setRequestedOutfitId(null)}
-          resetSignal={tabResetSignals.codiBook}
-          onOpenFits={openMyFitsForOutfit}
-        />
+      {isDatabaseReady ? (
+        <View style={[styles.tabScreen, activeTab !== "codiBook" && styles.hiddenTab]} pointerEvents={activeTab === "codiBook" ? "auto" : "none"}>
+          <CodiBookScreen
+            isActive={activeTab === "codiBook"}
+            onReturnToMyFit={codiReturnToMyFit ? () => { setCodiReturnToMyFit(false); setActiveTab("myFit"); } : undefined}
+            items={items}
+            isLoading={isLoading}
+            bottomInset={tabBarInset}
+            requestedOutfitId={requestedOutfitId}
+            onOutfitSaved={handleOutfitSaved}
+            onOpenWardrobe={() => setActiveTab("wardrobe")}
+            onOpenClothingItem={setSelectedWardrobeItem}
+            onRequestedOutfitOpened={() => setRequestedOutfitId(null)}
+            resetSignal={tabResetSignals.codiBook}
+            onOpenFits={openMyFitsForOutfit}
+          />
+        </View>
       ) : null}
 
       {activeTab === "profile" ? (
@@ -1045,6 +1061,7 @@ function AppContent() {
           selectedFriend={selectedFriend}
           friendWardrobeItems={friendWardrobeItems}
           friendOutfits={friendOutfits}
+          friendFits={friendFits}
           bottomInset={tabBarInset}
           onSendFriendRequest={handleSendFriendRequest}
           onAcceptFriendRequest={handleAcceptFriendRequest}
@@ -1104,6 +1121,8 @@ function AppContent() {
 }
 
 const styles = StyleSheet.create({
+  tabScreen: { flex: 1 },
+  hiddenTab: { display: "none" },
   app: {
     flex: 1,
     backgroundColor: COLORS.background,

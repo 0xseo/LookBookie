@@ -1,8 +1,9 @@
 import type {
-  FriendRequest,
+  FriendFit,
   FriendOutfit,
   FriendOutfitSticker,
   FriendProfile,
+  FriendRequest,
   FriendWardrobeItem,
 } from '../types/friends';
 import { isSupabaseConfigured, supabase } from './supabaseClient';
@@ -336,12 +337,13 @@ export async function listFriendOutfits(friendId: string): Promise<FriendOutfit[
 export async function listFriendLibrary(friendId: string) {
   await getCloudUser();
 
-  const [wardrobeItems, outfits] = await Promise.all([
+  const [wardrobeItems, outfits, fits] = await Promise.all([
     queryFriendWardrobe(friendId),
     queryFriendOutfits(friendId),
+    queryFriendFits(friendId),
   ]);
 
-  return { wardrobeItems, outfits };
+  return { wardrobeItems, outfits, fits };
 }
 
 async function queryFriendWardrobe(friendId: string): Promise<FriendWardrobeItem[]> {
@@ -549,4 +551,13 @@ async function mapFriendRequests(
       };
     })
     .filter((request): request is FriendRequest => Boolean(request));
+}
+
+async function queryFriendFits(friendId: string): Promise<FriendFit[]> {
+  const client = getConfiguredSupabase();
+  const { data, error } = await client.from('fits')
+    .select('id,owner_id,name,worn_on,remote_image_url,clothing_record_ids,outfit_record_id,created_at')
+    .eq('owner_id', friendId).order('worn_on', { ascending: false });
+  if (error) throw error;
+  return data.map((fit) => ({ id: fit.id, ownerId: fit.owner_id, name: fit.name, wornOn: fit.worn_on, remoteImageUrl: fit.remote_image_url, clothingRecordIds: fit.clothing_record_ids, outfitRecordId: fit.outfit_record_id, createdAt: fit.created_at }));
 }

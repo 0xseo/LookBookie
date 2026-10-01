@@ -3,6 +3,8 @@ import type { FitEntry, NewFitEntry } from '../types/fit';
 import type { Outfit } from '../types/outfit';
 import { isSupabaseConfigured, supabase, supabaseStorageBucket } from './supabaseClient';
 
+import { listFitEntries, updateFitCloudState } from '../storage/database';
+
 type FitCloudState = Pick<
   FitEntry,
   | 'remoteImageUrl'
@@ -12,6 +14,38 @@ type FitCloudState = Pick<
   | 'cloudError'
   | 'syncedAt'
 >;
+
+const pendingFitSyncs = new Map<number, Promise<FitCloudState | null>>();
+
+// Serialize each local record, including new records that do not have a remote ID yet.
+export function syncStoredFitToCloud(id: number, clothes: ClothingItem[], outfits: Outfit[]): Promise<FitCloudState | null> {
+  const previous = pendingFitSyncs.get(id);
+  const job = (previous ?? Promise.resolve()).catch(() => null).then(async () => {
+    const fit = (await listFitEntries()).find((entry) => entry.id === id);
+    if (!fit) return null;
+    const state = await syncFitToCloud(fit, clothes, outfits, false);
+    const latest = (await listFitEntries()).find((entry) => entry.id === id);
+    if (!latest) {
+      if (state.remoteRecordId) await deleteFitFromCloud({ ...fit, ...state });
+      return null;
+    }
+    const imageMatches = latest.localImagePath === fit.localImagePath;
+    const unchanged = imageMatches && latest.name === fit.name && latest.wornOn === fit.wornOn
+      && latest.outfitId === fit.outfitId && JSON.stringify(latest.clothingItemIds) === JSON.stringify(fit.clothingItemIds);
+    const nextState: FitCloudState = unchanged ? state : {
+      ...state,
+      remoteImageUrl: imageMatches ? state.remoteImageUrl : latest.remoteImageUrl,
+      cloudSyncStatus: 'pending',
+      cloudError: null,
+      syncedAt: null,
+    };
+    await updateFitCloudState(id, nextState);
+    return nextState;
+  });
+  pendingFitSyncs.set(id, job);
+  void job.finally(() => { if (pendingFitSyncs.get(id) === job) pendingFitSyncs.delete(id); }).catch(() => { });
+  return job;
+}
 
 export async function syncFitToCloud(
   fit: NewFitEntry | FitEntry,
@@ -40,6 +74,8 @@ export async function syncFitToCloud(
   const clothesById = new Map(clothes.map((item) => [item.id, item]));
   const outfit = outfits.find((item) => item.id === fit.outfitId);
   const payload = {
+    name: fit.name,
+    worn_on: fit.wornOn,
     clothing_record_ids: fit.clothingItemIds.flatMap((id) => {
       const remoteId = clothesById.get(id)?.remoteRecordId;
       return remoteId ? [remoteId] : [];

@@ -2,6 +2,8 @@ import type { CloudSyncStatus } from './sync';
 
 export type FitEntry = {
   id: number;
+  name: string;
+  wornOn: string;
   localImagePath: string;
   remoteImageUrl: string | null;
   remoteRecordId: string | null;

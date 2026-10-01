@@ -56,6 +56,8 @@ type OutfitRow = {
 
 type FitRow = {
   id: number;
+  name: string | null;
+  worn_on: string | null;
   local_image_path: string;
   remote_image_url: string | null;
   remote_record_id: string | null;
@@ -132,6 +134,9 @@ export async function initDatabase() {
   await ensureColumn(db, 'outfits', 'cloud_sync_status', "TEXT NOT NULL DEFAULT 'local'");
   await ensureColumn(db, 'outfits', 'cloud_error', 'TEXT');
   await ensureColumn(db, 'outfits', 'synced_at', 'DATETIME');
+  await ensureColumn(db, 'fits', 'name', "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(db, 'fits', 'worn_on', 'TEXT');
+  await db.execAsync("UPDATE fits SET worn_on = date(created_at) WHERE worn_on IS NULL");
   await ensureColumn(db, 'fits', 'remote_image_url', 'TEXT');
   await ensureColumn(db, 'fits', 'remote_record_id', 'TEXT');
   await ensureColumn(db, 'fits', 'storage_path', 'TEXT');
@@ -435,6 +440,8 @@ export async function insertFitEntry(fit: NewFitEntry) {
   const db = await getDatabase();
   const result = await db.runAsync(
     `INSERT INTO fits (
+      name,
+      worn_on,
       local_image_path,
       remote_image_url,
       remote_record_id,
@@ -444,7 +451,9 @@ export async function insertFitEntry(fit: NewFitEntry) {
       cloud_sync_status,
       cloud_error,
       synced_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    fit.name,
+    fit.wornOn,
     fit.localImagePath,
     fit.remoteImageUrl,
     fit.remoteRecordId,
@@ -463,7 +472,9 @@ export async function updateFitEntry(fit: FitEntry) {
   const db = await getDatabase();
   await db.runAsync(
     `UPDATE fits
-     SET local_image_path = ?,
+     SET name = ?,
+         worn_on = ?,
+         local_image_path = ?,
          remote_image_url = ?,
          remote_record_id = ?,
          storage_path = ?,
@@ -473,6 +484,8 @@ export async function updateFitEntry(fit: FitEntry) {
          cloud_error = ?,
          synced_at = ?
      WHERE id = ?`,
+    fit.name,
+    fit.wornOn,
     fit.localImagePath,
     fit.remoteImageUrl,
     fit.remoteRecordId,
@@ -715,6 +728,8 @@ export async function importLocalBackupPayload(
     }
 
     await insertFitEntry({
+      name: fit.name ?? '',
+      wornOn: fit.wornOn ?? fit.createdAt.slice(0, 10),
       localImagePath: fallbackImagePath,
       remoteImageUrl: fit.remoteImageUrl ?? null,
       remoteRecordId: fit.remoteRecordId ?? null,
@@ -820,6 +835,8 @@ function mapOutfitRow(row: OutfitRow): Outfit {
 function mapFitRow(row: FitRow): FitEntry {
   return {
     id: row.id,
+    name: row.name ?? '',
+    wornOn: row.worn_on ?? row.created_at.slice(0, 10),
     localImagePath: row.local_image_path,
     remoteImageUrl: row.remote_image_url ?? null,
     remoteRecordId: row.remote_record_id ?? null,

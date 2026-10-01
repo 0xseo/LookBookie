@@ -13,7 +13,6 @@ import {
   Ruler,
   Tags,
   Trash2,
-  Turtle,
   UserRound,
 } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
@@ -34,6 +33,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
 import { AppAlert } from "../components/AppDialog";
+import { BrandMascotButton } from "../components/BrandMascotButton";
+import { TurtleIcon } from "../components/TurtleIcon";
 import { CategoryManager } from "../components/CategoryManager";
 import { ColorPaletteManager } from "../components/ColorPaletteManager";
 import { FitSizeManager } from "../components/FitSizeManager";
@@ -414,7 +415,7 @@ export function MyPageScreen({
               <>
                 <View style={styles.profileCard}>
                   <View style={styles.profileAvatar}>
-                    <Turtle color={COLORS.primary} size={40} strokeWidth={2} />
+                    <TurtleIcon color={COLORS.primary} size={40} strokeWidth={2} />
                   </View>
                   <View style={styles.profileIdentity}>
                     <Text style={styles.profileName} numberOfLines={1}>
@@ -522,7 +523,7 @@ export function MyPageScreen({
               <View style={styles.stack}>
                 <View style={styles.signedOutProfile}>
                   <View style={styles.profileAvatar}>
-                    <Turtle color={COLORS.primary} size={40} strokeWidth={2} />
+                    <TurtleIcon color={COLORS.primary} size={40} strokeWidth={2} />
                   </View>
                   <Text style={styles.sectionTitle}>
                     룩부기 계정으로 연결해북
@@ -664,7 +665,7 @@ export function MyPageScreen({
                       </Text>
                     </View>
                     <View style={styles.modalTurtle}>
-                      <Turtle
+                      <TurtleIcon
                         color={COLORS.primary}
                         size={24}
                         strokeWidth={2.2}
@@ -892,8 +893,15 @@ export function MyPageScreen({
           automaticallyAdjustKeyboardInsets
         >
           <View style={styles.header}>
-            <Text style={styles.title}>마이페이지</Text>
-            <Text style={styles.caption}>내 옷장과 계정 설정</Text>
+            <View style={styles.headerTextGroup}>
+              <Text style={styles.title}>마이페이지</Text>
+              <Text style={styles.caption}>내 옷장과 계정 설정</Text>
+            </View>
+            <BrandMascotButton
+              screen="mypage"
+              onPress={() => mainScrollRef.current?.scrollTo({ y: 0, animated: true })}
+              label="마이페이지 맨 위로"
+            />
           </View>
 
           <View style={styles.statsRow}>
@@ -1000,7 +1008,8 @@ const styles = StyleSheet.create({
   keyboardView: { flex: 1 },
   scrollView: { flex: 1, backgroundColor: COLORS.background },
   container: { padding: 16, gap: 16 },
-  header: { paddingTop: 16 },
+  header: { paddingTop: 16, flexDirection: "row", alignItems: "center", gap: 8 },
+  headerTextGroup: { flex: 1 },
   title: { fontSize: 22, fontWeight: "700", color: COLORS.textPrimary },
   caption: { marginTop: 4, fontSize: 12, color: COLORS.textSecondary },
   statsRow: { flexDirection: "row", gap: 8 },

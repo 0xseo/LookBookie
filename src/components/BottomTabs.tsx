@@ -1,5 +1,11 @@
 import type { ComponentType } from "react";
-import { BookOpen, Shirt, UserRound, Users } from "lucide-react-native";
+import {
+  BookOpen,
+  Shirt,
+  UserRound,
+  Users,
+  SwatchBook,
+} from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { COLORS } from "../../constants/colors";
@@ -24,7 +30,7 @@ type TabConfig = {
 };
 
 const TABS: TabConfig[] = [
-  { key: "wardrobe", label: "옷장", Icon: Shirt },
+  { key: "wardrobe", label: "옷장", Icon: SwatchBook },
   { key: "myFit", label: "마이핏", Icon: MyFitIcon },
   { key: "codiBook", label: "코디북", Icon: BookOpen },
   { key: "friends", label: "친구", Icon: Users },

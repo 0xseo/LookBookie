@@ -60,3 +60,14 @@ export type FriendOutfit = {
   canvasHeight: number | null;
   createdAt: string;
 };
+
+export type FriendFit = {
+  id: string;
+  ownerId: string;
+  name: string;
+  wornOn: string;
+  remoteImageUrl: string;
+  clothingRecordIds: string[];
+  outfitRecordId: string | null;
+  createdAt: string;
+};

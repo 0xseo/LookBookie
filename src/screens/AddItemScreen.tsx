@@ -23,10 +23,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '../../constants/colors';
+import { EMPTY_MASCOTS, MASCOT_FRAMES, type EmptyMascotScreen } from '../../constants/mascots';
 import { AppAlert } from '../components/AppDialog';
 import { BrandAutocomplete } from '../components/BrandAutocomplete';
 import { ColorPalettePicker } from '../components/ColorPalettePicker';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { MascotImage } from '../components/MascotImage';
 import { RepresentativeColorExtractor } from '../components/RepresentativeColorExtractor';
 import { TagInput } from '../components/TagInput';
 import { ImageCropScreen } from './ImageCropScreen';
@@ -58,8 +60,13 @@ export type AddItemScreenHandle = {
   requestCancel: () => void;
 };
 
+const MASCOT_CHOICES = Object.keys(EMPTY_MASCOTS) as EmptyMascotScreen[];
+
 export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>(
   function AddItemScreen({ brandSuggestions, onCancel, onSaved }, ref) {
+    const [placeholderMascot] = useState<EmptyMascotScreen>(() =>
+      MASCOT_CHOICES[Math.floor(Math.random() * MASCOT_CHOICES.length)] ?? 'wardrobe'
+    );
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
     const [eraserSourceUri, setEraserSourceUri] = useState<string | null>(null);
@@ -332,7 +339,7 @@ export const AddItemScreen = forwardRef<AddItemScreenHandle, AddItemScreenProps>
                 <Image source={{ uri: imageUri }} style={styles.previewImage} />
               ) : (
                 <View style={styles.previewPlaceholder}>
-                  <Text style={styles.previewMascot}>🐢</Text>
+                  <MascotImage source={EMPTY_MASCOTS[placeholderMascot]} frame={MASCOT_FRAMES[placeholderMascot]} size={96} />
                   <Text style={styles.previewPlaceholderText}>옷 사진을 골라봐북</Text>
                 </View>
               )}
@@ -596,10 +603,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.bubbleBg,
-  },
-  previewMascot: {
-    fontSize: 56,
-    marginBottom: 16,
+    gap: 16,
   },
   previewPlaceholderText: {
     fontSize: 14,

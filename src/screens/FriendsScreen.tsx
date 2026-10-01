@@ -1,9 +1,7 @@
 import {
   ChevronLeft,
   ChevronRight,
-  RefreshCw,
   Search,
-  Turtle,
   X,
 } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +11,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -27,17 +26,26 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { COLORS } from "../../constants/colors";
 import { AppAlert } from "../components/AppDialog";
+import { BrandMascotButton } from "../components/BrandMascotButton";
+import { TurtleIcon } from "../components/TurtleIcon";
+import { MascotEmptyState } from "../components/MascotEmptyState";
+import { CollectionToolbar } from "../components/CollectionToolbar";
+import { OutfitPreviewCanvas } from "../components/OutfitPreview";
+import { WornClothes } from "../components/WornClothes";
 import { useColorPaletteOptions } from "../hooks/useColorPaletteOptions";
 import { useKeyboardHeight } from "../hooks/useKeyboardHeight";
+import { fitMatchesSearch } from "../services/fitSearch";
+import { compareCollection, dateSearchTerms, EMPTY_FILTERS, matchesCollectionFilters, type CollectionFilters, type CollectionSort } from "../services/collectionControls";
 import { getColorSearchTerms } from "../services/colorSearch";
+import type { CategoryFilter, ColorOption } from "../types/clothing";
 import type {
+  FriendFit,
   FriendOutfit,
   FriendOutfitSticker,
   FriendProfile,
   FriendRequest,
   FriendWardrobeItem,
 } from "../types/friends";
-import type { CategoryFilter, ColorOption } from "../types/clothing";
 
 type FriendsScreenProps = {
   isCloudConfigured: boolean;
@@ -49,6 +57,7 @@ type FriendsScreenProps = {
   selectedFriend: FriendProfile | null;
   friendWardrobeItems: FriendWardrobeItem[];
   friendOutfits: FriendOutfit[];
+  friendFits: FriendFit[];
   bottomInset: number;
   onSendFriendRequest: (email: string) => Promise<void>;
   onAcceptFriendRequest: (request: FriendRequest) => Promise<void>;
@@ -60,7 +69,7 @@ type FriendsScreenProps = {
   resetSignal: number;
 };
 
-type FriendViewMode = "wardrobe" | "outfits";
+type FriendViewMode = "wardrobe" | "outfits" | "fits";
 
 const GRID_COLUMNS = 3;
 const GRID_GAP = 8;
@@ -76,6 +85,7 @@ export function FriendsScreen({
   selectedFriend,
   friendWardrobeItems,
   friendOutfits,
+  friendFits,
   bottomInset,
   onSendFriendRequest,
   onAcceptFriendRequest,
@@ -93,6 +103,9 @@ export function FriendsScreen({
   const [detailVisible, setDetailVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFit, setSelectedFit] = useState<FriendFit | null>(null);
+  const [fitSort, setFitSort] = useState<CollectionSort>("createdDesc");
+  const [fitFilters, setFitFilters] = useState<CollectionFilters>(EMPTY_FILTERS);
   const [selectedCategory, setSelectedCategory] =
     useState<CategoryFilter>("전체");
   const { colorOptions } = useColorPaletteOptions();
@@ -125,6 +138,12 @@ export function FriendsScreen({
       ),
     [colorOptions, friendOutfits, searchQuery]
   );
+  const fitTileSize = Math.floor((width - SIDE_PADDING * 2 - GRID_GAP) / 2);
+  const visibleFits = useMemo(() => friendFits.filter((fit) => {
+    const outfit = friendOutfits.find((entry) => entry.id === fit.outfitRecordId);
+    const clothes = friendWardrobeItems.filter((entry) => fit.clothingRecordIds.includes(entry.id));
+    return fitMatchesSearch(fit, searchQuery, outfit, clothes, colorOptions) && matchesCollectionFilters(fitFilters, [...(outfit?.seasons ?? []), ...clothes.flatMap((item) => item.seasons)], clothes.map((item) => item.color), fit.wornOn);
+  }).sort((a, b) => compareCollection(fitSort, { name: a.name, date: a.wornOn, id: a.id }, { name: b.name, date: b.wornOn, id: b.id })), [friendFits, friendOutfits, friendWardrobeItems, searchQuery, fitFilters, fitSort, colorOptions]);
   const visibleFriends = useMemo(() => {
     const normalizedQuery = friendListSearchQuery.trim().toLowerCase();
 
@@ -160,6 +179,8 @@ export function FriendsScreen({
 
   const openFriend = (friend: FriendProfile) => {
     setMode("wardrobe");
+    setSelectedFit(null);
+    setFitFilters(EMPTY_FILTERS);
     setSearchQuery("");
     setSelectedCategory("전체");
     setDetailVisible(true);
@@ -200,6 +221,8 @@ export function FriendsScreen({
   useEffect(() => {
     setDetailVisible(false);
     setMode("wardrobe");
+    setSelectedFit(null);
+    setFitFilters(EMPTY_FILTERS);
     setSearchQuery("");
     setSelectedCategory("전체");
     onCloseFriend();
@@ -227,7 +250,7 @@ export function FriendsScreen({
               />
             </Pressable>
             <View style={styles.detailAvatar}>
-              <Turtle color={COLORS.primary} size={22} strokeWidth={2.2} />
+              <TurtleIcon color={COLORS.primary} size={22} strokeWidth={2.2} />
             </View>
             <View style={styles.detailTitleGroup}>
               <Text style={styles.detailTitle} numberOfLines={1}>
@@ -237,18 +260,11 @@ export function FriendsScreen({
                 {getFriendSecondaryText(selectedFriend)}
               </Text>
             </View>
-            <Pressable
-              onPress={refreshFriends}
-              style={styles.mascotSlot}
-              accessibilityLabel="친구 데이터 새로고침"
-              hitSlop={8}
-            >
-              {isFriendBusy || isRefreshing ? (
-                <ActivityIndicator color={COLORS.primary} />
-              ) : (
-                <RefreshCw color={COLORS.primary} size={22} strokeWidth={2.2} />
-              )}
-            </Pressable>
+            <BrandMascotButton
+              screen="friends"
+              onPress={() => void refreshFriends()}
+              label="친구 데이터 새로고침"
+            />
           </View>
 
           <View style={styles.segmentedControl}>
@@ -268,6 +284,7 @@ export function FriendsScreen({
                 setSearchQuery("");
               }}
             />
+            <ModeButton label="마이핏" selected={mode === "fits"} onPress={() => { setMode("fits"); setSearchQuery(""); }} />
           </View>
 
           {mode === "wardrobe" ? (
@@ -282,7 +299,7 @@ export function FriendsScreen({
                 styles.detailListContent,
                 { paddingBottom: bottomInset + 24 + keyboardHeight },
                 visibleWardrobeItems.length === 0 &&
-                  styles.detailEmptyListContent,
+                styles.detailEmptyListContent,
               ]}
               ListHeaderComponent={
                 <View style={styles.detailListHeader}>
@@ -365,7 +382,7 @@ export function FriendsScreen({
               keyboardDismissMode="interactive"
               automaticallyAdjustKeyboardInsets
             />
-          ) : (
+          ) : mode === "outfits" ? (
             <FlatList
               key="friend-outfits"
               data={visibleOutfits}
@@ -377,7 +394,7 @@ export function FriendsScreen({
                 styles.detailListContent,
                 { paddingBottom: bottomInset + 24 + keyboardHeight },
                 visibleOutfits.length === 0 &&
-                  styles.detailEmptyListContent,
+                styles.detailEmptyListContent,
               ]}
               ListHeaderComponent={
                 <View style={styles.detailListHeader}>
@@ -442,8 +459,26 @@ export function FriendsScreen({
               keyboardDismissMode="interactive"
               automaticallyAdjustKeyboardInsets
             />
+          ) : (
+            <View style={{ flex: 1 }}>
+              <CollectionToolbar query={searchQuery} onQueryChange={setSearchQuery} placeholder="마이핏, 날짜, 코디북, 옷 검색" sort={fitSort} onSortChange={setFitSort} filters={fitFilters} onFiltersChange={setFitFilters} title="마이핏" dates bottomInset={bottomInset} />
+              <FlatList data={visibleFits} keyExtractor={(fit) => fit.id} numColumns={2} columnWrapperStyle={styles.detailGridRow} contentContainerStyle={[styles.detailListContent, { paddingBottom: bottomInset + 24 }]} refreshing={isFriendBusy || isRefreshing} onRefresh={refreshFriends}
+                renderItem={({ item }) => <Pressable onPress={() => setSelectedFit(item)} style={[styles.outfitCard, { width: fitTileSize }]}><Image source={{ uri: item.remoteImageUrl }} style={{ width: '100%', aspectRatio: 4 / 5, resizeMode: 'cover' }} /><View style={styles.outfitLabelRow}><Text style={styles.outfitName} numberOfLines={1}>{item.name || '마이핏'}</Text><Text style={styles.outfitMeta}>{item.wornOn.replaceAll('-', '.')}</Text></View></Pressable>}
+                ListEmptyComponent={isFriendBusy ? <FriendDetailLoading /> : <EmptyState text={searchQuery ? '검색 결과가 없어북' : '친구 마이핏이 비어있어북'} />} />
+            </View>
+
           )}
         </KeyboardAvoidingView>
+        <Modal visible={Boolean(selectedFit)} animationType="slide" onRequestClose={() => setSelectedFit(null)}>
+          {selectedFit ? <SafeAreaView style={styles.safeArea}>
+            <View style={styles.header}><Pressable onPress={() => setSelectedFit(null)} hitSlop={8} style={{ padding: 8 }}><ChevronLeft color={COLORS.primary} size={24} /></Pressable><View style={{ flex: 1 }}><Text style={styles.title}>{selectedFit.name || '마이핏'}</Text><Text style={styles.caption}>{selectedFit.wornOn.replaceAll('-', '.')}</Text></View></View>
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+              <Image source={{ uri: selectedFit.remoteImageUrl }} style={{ width: '100%', aspectRatio: 4 / 5, resizeMode: 'contain', backgroundColor: COLORS.surface, borderRadius: 16 }} />
+              {friendOutfits.filter((outfit) => outfit.id === selectedFit.outfitRecordId).map((outfit) => <View key={outfit.id}><Text style={styles.title}>{outfit.name}</Text><OutfitPreviewCanvas stickers={outfit.stickers} canvasWidth={outfit.canvasWidth} canvasHeight={outfit.canvasHeight} previewSize={width - 32} /></View>)}
+              <WornClothes clothes={selectedFit.clothingRecordIds.map((id) => { const item = friendWardrobeItems.find((entry) => entry.id === id); return { key: id, imageUri: item?.remoteImageUrl, name: item?.name || item?.category || '', brand: item?.brand || '', deleted: !item }; })} />
+            </ScrollView>
+          </SafeAreaView> : null}
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -474,10 +509,17 @@ export function FriendsScreen({
           }
         >
           <View style={styles.header}>
-            <Text style={styles.title}>친구</Text>
-            <Text style={styles.caption}>
-              친구를 눌러 옷장과 코디북을 살펴봐요
-            </Text>
+            <View style={styles.headerTextGroup}>
+              <Text style={styles.title}>친구</Text>
+              <Text style={styles.caption}>
+                친구를 눌러 옷장과 코디북을 살펴봐요
+              </Text>
+            </View>
+            <BrandMascotButton
+              screen="friends"
+              onPress={() => void refreshFriends()}
+              label="친구 새로고침"
+            />
           </View>
 
           {!isCloudConfigured ? (
@@ -535,7 +577,7 @@ export function FriendsScreen({
                   {incomingFriendRequests.map((request) => (
                     <View key={request.friendshipId} style={styles.requestRow}>
                       <View style={styles.friendAvatar}>
-                        <Turtle
+                        <TurtleIcon
                           color={COLORS.primary}
                           size={21}
                           strokeWidth={2.2}
@@ -576,7 +618,7 @@ export function FriendsScreen({
                   {outgoingFriendRequests.map((request) => (
                     <View key={request.friendshipId} style={styles.pendingRow}>
                       <View style={styles.friendAvatar}>
-                        <Turtle
+                        <TurtleIcon
                           color={COLORS.primary}
                           size={21}
                           strokeWidth={2.2}
@@ -634,7 +676,7 @@ export function FriendsScreen({
                         hitSlop={8}
                       >
                         <View style={styles.friendAvatar}>
-                          <Turtle
+                          <TurtleIcon
                             color={COLORS.primary}
                             size={22}
                             strokeWidth={2.2}
@@ -657,11 +699,12 @@ export function FriendsScreen({
                     ))}
                   </View>
                 ) : (
-                  <Text style={styles.panelText}>
-                    {friendListSearchQuery.trim()
-                      ? "일치하는 친구가 없어북."
-                      : "아직 추가한 친구가 없어북."}
-                  </Text>
+                  <MascotEmptyState
+                    screen="friends"
+                    message={friendListSearchQuery.trim()
+                      ? "일치하는 친구가 없어북"
+                      : undefined}
+                  />
                 )}
               </View>
             </>
@@ -707,15 +750,8 @@ function ModeButton({
   );
 }
 
-function EmptyState({ text }: { text: string }) {
-  return (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyMascot}>🐢</Text>
-      <View style={styles.speechBubble}>
-        <Text style={styles.emptyText}>{text}</Text>
-      </View>
-    </View>
-  );
+function EmptyState({ text }: { text: string; }) {
+  return <MascotEmptyState screen="friends" message={text} />;
 }
 
 function FriendDetailLoading() {
@@ -727,7 +763,7 @@ function FriendDetailLoading() {
   );
 }
 
-function FriendWardrobeImage({ uri }: { uri: string }) {
+function FriendWardrobeImage({ uri }: { uri: string; }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => setLoading(true), [uri]);
@@ -860,13 +896,13 @@ function friendOutfitMatchesSearch(
     const colorTerms =
       sticker.color && sticker.colorValue && sticker.colorFamily
         ? getColorSearchTerms(
-            {
-              color: sticker.color,
-              colorValue: sticker.colorValue,
-              colorFamily: sticker.colorFamily,
-            },
-            colorOptions
-          )
+          {
+            color: sticker.color,
+            colorValue: sticker.colorValue,
+            colorFamily: sticker.colorFamily,
+          },
+          colorOptions
+        )
         : [];
 
     return [sticker.name, sticker.brand, sticker.category, ...colorTerms];
@@ -991,7 +1027,8 @@ const styles = StyleSheet.create({
   keyboardView: { flex: 1 },
   scrollView: { flex: 1, backgroundColor: COLORS.background },
   container: { padding: 16, gap: 16 },
-  header: { paddingTop: 8 },
+  header: { paddingTop: 8, flexDirection: "row", alignItems: "center", gap: 8 },
+  headerTextGroup: { flex: 1 },
   title: { fontSize: 22, fontWeight: "700", color: COLORS.textPrimary },
   caption: {
     marginTop: 4,
@@ -1182,16 +1219,6 @@ const styles = StyleSheet.create({
   },
   detailTitleGroup: { flex: 1 },
   detailTitle: { fontSize: 22, fontWeight: "700", color: COLORS.textPrimary },
-  mascotSlot: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.secondary,
-  },
   segmentedControl: {
     minHeight: 48,
     marginHorizontal: 16,
@@ -1331,30 +1358,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: COLORS.primary,
-  },
-  emptyState: {
-    minHeight: 260,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-    gap: 16,
-  },
-  emptyMascot: { fontSize: 56 },
-  speechBubble: {
-    maxWidth: 280,
-    padding: 16,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 4,
-    borderBottomRightRadius: 16,
-    borderBottomLeftRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.bubbleBg,
-  },
-  emptyText: {
-    fontSize: 14,
-    fontWeight: "400",
-    color: COLORS.textPrimary,
-    textAlign: "center",
   },
 });

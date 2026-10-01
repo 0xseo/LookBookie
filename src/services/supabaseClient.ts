@@ -1,7 +1,7 @@
-import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
+import { AppState, Platform } from 'react-native';
 
 import 'react-native-url-polyfill/auto';
 
@@ -137,6 +137,8 @@ type LookBoogieDatabase = {
           owner_id: string;
           remote_image_url: string;
           storage_path: string;
+          name: string;
+          worn_on: string;
           clothing_record_ids: string[];
           outfit_record_id: string | null;
           created_at: string;
@@ -145,12 +147,16 @@ type LookBoogieDatabase = {
           owner_id: string;
           remote_image_url: string;
           storage_path: string;
+          name?: string;
+          worn_on?: string;
           clothing_record_ids?: string[];
           outfit_record_id?: string | null;
         };
         Update: {
           remote_image_url?: string;
           storage_path?: string;
+          name?: string;
+          worn_on?: string;
           clothing_record_ids?: string[];
           outfit_record_id?: string | null;
         };
@@ -172,13 +178,13 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKe
 
 export const supabase: SupabaseClient<LookBoogieDatabase> | null = isSupabaseConfigured
   ? createClient<LookBoogieDatabase>(supabaseUrl as string, supabasePublishableKey as string, {
-      auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false,
-      },
-    })
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  })
   : null;
 
 if (supabase && Platform.OS !== 'web') {
